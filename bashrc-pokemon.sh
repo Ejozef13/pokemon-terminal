@@ -1,31 +1,38 @@
-ART="$HOME/.config/pokemon-terminal/terminal-art/venusaur.txt"
-
-if [[ -f "$ART" ]] && [[ $- == *i* ]]; then
-    LEFT="$(cat "$ART")"
-
+# Sourced by interactive Bash; isolate variables from the caller.
+_pokemon_terminal() {
+    [[ $- == *i* && ${TERM:-dumb} != dumb ]] || return 0
+    local art="${XDG_CONFIG_HOME:-$HOME/.config}/pokemon-terminal/terminal-art/venusaur.txt"
+    [[ -r $art ]] || return 0
+    local -a left=() right=()
+    local line plain info='' width=0 columns=${COLUMNS:-80} i count
+    local ansi=$'\e''\[[0-?]*[ -/]*[@-~]'
+    mapfile -t left < "$art"
     if command -v fastfetch >/dev/null 2>&1; then
-        RIGHT="$(fastfetch --logo none 2>/dev/null)"
+        info=$(fastfetch --logo none 2>/dev/null) || info=''
     elif command -v neofetch >/dev/null 2>&1; then
-        RIGHT="$(neofetch --stdout 2>/dev/null)"
+        info=$(neofetch --stdout 2>/dev/null) || info=''
+    fi
+    [[ -z $info ]] || mapfile -t right <<< "$info"
+    for line in "${left[@]}"; do
+        plain=$line
+        while [[ $plain =~ $ansi ]]; do plain=${plain/"${BASH_REMATCH[0]}"/}; done
+        (("${#plain}" <= width)) || width=${#plain}
+    done
+    if ((columns < width + 42)) || (("${#right[@]}" == 0)); then
+        printf '%s\n' "${left[@]}"
+        (("${#right[@]}" == 0)) || printf '\n%s\n' "$info"
     else
-        RIGHT=""
+        count=${#left[@]}
+        (("${#right[@]}" <= count)) || count=${#right[@]}
+        for ((i=0; i<count; i++)); do
+            line=${left[i]-}
+            plain=$line
+            while [[ $plain =~ $ansi ]]; do plain=${plain/"${BASH_REMATCH[0]}"/}; done
+            printf '%s%*s%s\n' "$line" "$((width - ${#plain} + 2))" '' "${right[i]-}"
+        done
     fi
-
-    LFILE=$(mktemp)
-    RFILE=$(mktemp)
-
-    printf "%s\n" "$LEFT" > "$LFILE"
-    printf "%s\n" "$RIGHT" > "$RFILE"
-
-    LINES_L=$(wc -l < "$LFILE")
-    LINES_R=$(wc -l < "$RFILE")
-
-    if [ "$LINES_R" -lt "$LINES_L" ]; then
-        for _ in $(seq $LINES_R $LINES_L); do echo >> "$RFILE"; done
-    fi
-
-    paste -d ' ' "$LFILE" "$RFILE"
-
-    rm -f "$LFILE" "$RFILE"
-    printf "\n"
-fi
+    printf '\e[0m\e[?25h\n'
+    return 0
+}
+_pokemon_terminal
+unset -f _pokemon_terminal
