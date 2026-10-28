@@ -41,7 +41,7 @@ prompt (3 seconds when Fish has no idle timeout). The nonblocking integration de
 - `--fps`: maximum redraw rate, 1–30 (default 8).
 
 The compact dashboard uses CachyOS green and blue accents, open sides,
-small icons, section rules sized to their text, arrows, usage meters,
+small icons, section rules aligned to the top hardware rule’s width, arrows, usage meters,
 a current-month calendar, a highlighted current day, and palette dots:
 
 - **Hardware** in CachyOS green: CPU, GPUs, temperatures when supported, RAM,
@@ -49,7 +49,7 @@ a current-month calendar, a highlighted current day, and palette dots:
 - **System & Software** in blue: host, distribution, kernel, uptime, packages,
   desktop, window manager, Fish version, and terminal version.
 - **Date & Calendar**: green labels, blue date/weekday headings, white day numbers,
-  and a CachyOS-green highlight for today. The footer dots use ANSI colors 0–7, following
+  and black text on a CachyOS-green highlight for today. The footer dots use ANSI colors 0–7, following
   the terminal’s active color scheme rather than fixed green/blue values.
 
 Network modules are never requested or rendered. Fastfetch runs with an explicit

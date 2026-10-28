@@ -156,7 +156,7 @@ class DashboardTests(unittest.TestCase):
         self.assertLessEqual(len(rows), 30)
         escapes = dashboard.CSI.findall('\n'.join(rows))
         rgb = {escape for escape in escapes if escape.startswith('\x1b[38;2;')}
-        self.assertEqual(rgb, {'\x1b[38;2;0;230;160m', '\x1b[38;2;91;157;255m'})
+        self.assertEqual(rgb, {'\x1b[38;2;0;230;160m', '\x1b[38;2;91;157;255m', '\x1b[38;2;0;0;0m'})
 
     def test_open_sides_calendar_colors_and_terminal_palette(self):
         rows = dashboard.dashboard(self.sample(), 76, datetime(2026, 10, 28))
@@ -171,3 +171,7 @@ class DashboardTests(unittest.TestCase):
         for code in range(30, 38):
             self.assertIn(f'\x1b[{code}m●', rows[-1])
         self.assertNotIn('38;2', rows[-1])
+        rules = [dashboard.visible_width(row) for row in rows if '─' in row]
+        self.assertEqual(len(set(rules)), 1)
+        self.assertIn('\x1b[48;2;0;230;160m\x1b[38;2;0;0;0m28', '\n'.join(rows))
+
