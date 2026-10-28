@@ -42,14 +42,14 @@ class DashboardTests(unittest.TestCase):
         plain = '\n'.join(dashboard.CSI.sub('', line) for line in rows)
         for text in ('HARDWARE', 'SYSTEM & SOFTWARE', 'DATE & CALENDAR', 'GPU',
                      'AMD Ryzen 7 9700X', '5.50 GHz', '45.1°C', 'RAM', 'ROM /',
-                     'Display', '3840x2160 @ 2x', 'Distribution', 'CachyOS x86_64',
+                     'Distribution', 'CachyOS x86_64',
                      'KDE Plasma', 'KWin (Wayland)', 'konsole', '1933 (pacman)',
                      'Mo Tu We Th Fr Sa Su', 'Oct 2026', 'W44'):
             self.assertIn(text, plain)
-        for text in ('NETWORK', 'LAN', 'DNS', 'WAN', '192.0.2', '198.51.100'):
+        for text in ('NETWORK', 'LAN', 'DNS', 'WAN', 'Display', '192.0.2', '198.51.100'):
             self.assertNotIn(text, plain)
         self.assertTrue(all(dashboard.visible_width(row) == 76 for row in rows[:-1]))
-        self.assertIn('\033[7m', '\n'.join(rows))
+        self.assertIn('\033[48;2;91;157;255m', '\n'.join(rows))
         for shade in (dashboard.TEAL, dashboard.BLUE, dashboard.CACHY_GREEN):
             self.assertIn(dashboard.color('', shade).split('m')[0] + 'm', '\n'.join(rows))
 
@@ -157,3 +157,17 @@ class DashboardTests(unittest.TestCase):
         escapes = dashboard.CSI.findall('\n'.join(rows))
         rgb = {escape for escape in escapes if escape.startswith('\x1b[38;2;')}
         self.assertEqual(rgb, {'\x1b[38;2;0;230;160m', '\x1b[38;2;91;157;255m'})
+
+    def test_open_sides_calendar_colors_and_terminal_palette(self):
+        rows = dashboard.dashboard(self.sample(), 76, datetime(2026, 10, 28))
+        self.assertNotIn('│', dashboard.CSI.sub('', '\n'.join(rows)))
+        date = next(row for row in rows if 'Wed, 28 Oct' in row)
+        weekdays = next(row for row in rows if 'Mo Tu We' in row)
+        blue = '\x1b[38;2;91;157;255m'
+        self.assertIn(blue + 'Wed, 28 Oct', date)
+        self.assertIn(blue + 'Mo Tu We', weekdays)
+        weeks = [row for row in rows if '. Week' in row]
+        self.assertTrue(all('\x1b[97m' in row for row in weeks))
+        for code in range(30, 38):
+            self.assertIn(f'\x1b[{code}m●', rows[-1])
+        self.assertNotIn('38;2', rows[-1])

@@ -40,15 +40,17 @@ prompt (3 seconds when Fish has no idle timeout). The nonblocking integration de
 - `--gap`: columns between sprite and fastfetch, 1–40 (default 8).
 - `--fps`: maximum redraw rate, 1–30 (default 8).
 
-The compact reference-inspired dashboard uses only CachyOS green and blue,
-with small icons, thin section rules, arrows, usage meters,
+The compact dashboard uses CachyOS green and blue accents, open sides,
+small icons, thin section rules, arrows, usage meters,
 a current-month calendar, a highlighted current day, and palette dots:
 
 - **Hardware** in CachyOS green: CPU, GPUs, temperatures when supported, RAM,
-  one row per backing filesystem, and display resolution/scaling/refresh rate.
+  and one row per backing filesystem. Display information is omitted.
 - **System & Software** in blue: host, distribution, kernel, uptime, packages,
   desktop, window manager, Fish version, and terminal version.
-- **Date & Calendar** in CachyOS green: local date/time, ISO week, weekdays, and month.
+- **Date & Calendar**: green labels, blue date/weekday headings, white day numbers,
+  and a blue highlight for today. The footer dots use ANSI colors 0–7, following
+  the terminal’s active color scheme rather than fixed green/blue values.
 
 Network modules are never requested or rendered. Fastfetch runs with an explicit
 local module list and without loading your global configuration. Your global

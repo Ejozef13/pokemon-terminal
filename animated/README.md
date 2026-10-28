@@ -51,7 +51,9 @@ There is no static-art fallback.
 
 ## Detection and cleanup
 
-The compact dashboard uses only CachyOS green and blue. Raw sensor channels are
+The compact dashboard uses green/blue accents with both sides open. Calendar
+headings are blue, day numbers are terminal white, and footer circles use the
+terminal’s native ANSI palette. The hardware section omits Display. Raw sensor channels are
 kept in diagnostics; CPU/GPU temperatures appear inline when identified. Repeated
 Btrfs subvolumes share a single filesystem row. Basic Fastfetch data and temperature detection
 are separate queries, and read-only local Linux probes fill missing fields.

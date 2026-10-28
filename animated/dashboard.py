@@ -29,6 +29,12 @@ def color(text, hex_color):
     return prefix + str(text).replace(RESET, RESET + prefix) + RESET
 
 
+def terminal_color(text, code):
+    """Use the terminal palette, so Konsole's selected scheme defines the RGB."""
+    prefix = f'\033[{code}m'
+    return prefix + str(text).replace(RESET, RESET + prefix) + RESET
+
+
 def visible_width(text):
     return sum(0 if unicodedata.combining(c) or unicodedata.category(c).startswith('C')
                else 2 if unicodedata.east_asian_width(c) in ('W', 'F') else 1
@@ -252,24 +258,6 @@ def sections(data, now):
     for disk in compact_disks(data.get('disk', [])) or [{}]:
         hardware.append(('ROM ' + clean(disk.get('mountpoint', '')),
                          usage(disk.get('bytes', {}))))
-    for display in data.get('display') or [{}]:
-        if not display.get('width'):
-            hardware.append(('Display', 'Unavailable'))
-            continue
-        text = f"{display['width']}x{display.get('height', '?')}"
-        scale = number(display.get('scaleFactor'))
-        if scale and scale != 1:
-            text += f' @ {scale:g}x'
-        rate = number(display.get('refreshRate'))
-        w, h = number(display.get('physicalWidth')), number(display.get('physicalHeight'))
-        if w and h:
-            text += f' in {math.hypot(w, h) / 25.4:.1f}"'
-        if rate:
-            text += f', {rate:g} Hz'
-        if display.get('type'):
-            text += ' [' + clean(display['type']) + ']'
-        hardware.append(('Display', text))
-
     host = data.get('host', {})
     kernel = data.get('kernel', {})
     architecture = clean(kernel.get('architecture', ''))
@@ -299,13 +287,13 @@ def sections(data, now):
         ('Terminal', named(data.get('terminal'))),
     ]
     date_rows = [('Date', now.strftime('%a, %d %b %Y - %H:%M') + f' (W{now.isocalendar().week:02d})'),
-                 ('Days', color('Mo Tu We Th Fr Sa Su', CACHY_GREEN))]
+                 ('Days', 'Mo Tu We Th Fr Sa Su')]
     for index, week in enumerate(calendar.Calendar(firstweekday=0).monthdayscalendar(now.year, now.month), 1):
         days = []
         for day in week:
             value = f'{day:2}' if day else '  '
             if day == now.day:
-                value = '\033[7m' + color(value, CACHY_GREEN)
+                value = '\033[48;2;91;157;255m' + terminal_color(value, 97)
             days.append(value)
         date_rows.append((f'{index}. Week', ' '.join(days)))
     return [('HARDWARE', TEAL, hardware), ('SYSTEM & SOFTWARE', BLUE, system),
@@ -325,21 +313,27 @@ def dashboard(data, width=76, now=None):
         border = ('┌' if index == 0 else '├') + '─' * (remaining // 2) + middle + '─' * (remaining - remaining // 2) + ('┐' if index == 0 else '┤')
         rows.append(color(border, accent))
         for label, value in entries:
-            icons = {'CPU': '▣', 'GPU': '▧', 'RAM': '▤', 'Display': '▭',
+            icons = {'CPU': '▣', 'GPU': '▧', 'RAM': '▤',
                      'Host': '◆', 'Distribution': '◈', 'Kernel': '⚙', 'Uptime': '◷',
                      'Packages': '▦', 'Desktop': '▱', 'Window-Manager': '▧',
                      'Shell': '›', 'Terminal': '▣', 'Date': '◷', 'Days': '▦'}
             icon = '▰' if label.startswith('ROM') else icons.get(label, '▦')
             label = clip(clean(label), label_width)
             value = clip(str(value), value_width)
-            line = (color('│' + icon + ' ', accent) + color(label, accent)
+            # Calendar headers are blue; every date number stays terminal white.
+            if title == 'DATE & CALENDAR' and label.startswith(('Date', 'Days')):
+                styled_value = color(value, BLUE)
+            elif title == 'DATE & CALENDAR':
+                styled_value = terminal_color(value, 97)
+            else:
+                styled_value = color(value, WHITE)
+            line = (color(' ' + icon + ' ', accent) + color(label, accent)
                     + ' ' * (label_width - visible_width(label)) + color(' → ', CYAN)
-                    + color(value, WHITE) + ' ' * (value_width - visible_width(value))
+                    + styled_value + ' ' * (value_width - visible_width(value))
                     + ' ')
             rows.append(line)
     rows.append(color('└' + '─' * inside + '┘', TEAL))
-    rows.append(' ' + ' '.join(color('●', shade) for shade in
-                              (CACHY_GREEN, BLUE) * 4))
+    rows.append(' ' + ' '.join(terminal_color('●', code) for code in range(30, 38)))
     return rows
 
 
