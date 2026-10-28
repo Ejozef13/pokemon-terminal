@@ -53,6 +53,28 @@ Optional adjustments:
 bash install.sh --width 48 --gap 8 --fps 8 --duration 0
 ```
 
+## Insert your Pokémon GIF here
+
+Venusaur is the default design for this layout. Want a different Pokémon?
+Clone or fork this repository and install your own animated GIF:
+
+```fish
+bash install.sh ~/Downloads/your-pokemon.gif
+```
+
+The installer copies the GIF into your configuration and keeps the same
+dashboard, calendar, colors, and immediately usable Fish prompt. Use a looping,
+transparent animated GIF with at least two frames for the best result. Different
+sprite proportions may need a width adjustment:
+
+```fish
+bash install.sh ~/Downloads/your-pokemon.gif --width 48
+```
+
+To make your chosen Pokémon the default in your own fork, put its GIF at
+`assets/venusaur.gif` (keep that filename), commit it, and run `bash install.sh`.
+Replacing the GIF changes the sprite; it does not change the dashboard layout.
+
 Animation stops on the first command, clearing/cancelling input, resizing,
 another prompt, or long/multiline input that could scroll the header. The last
 frame stays until cleared or scrolled away. Nested shells and SSH skip startup.
