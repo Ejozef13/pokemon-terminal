@@ -51,8 +51,8 @@ There is no static-art fallback.
 
 ## Detection and cleanup
 
-The compact dashboard uses green/blue accents with both sides open. Calendar
-headings are blue, day numbers are terminal white, and footer circles use the
+The compact dashboard uses green/blue accents with both sides open. Section rules fit their content. Calendar
+headings are blue, day numbers are terminal white with a green highlight today, and footer circles use the
 terminal’s native ANSI palette. The hardware section omits Display. Raw sensor channels are
 kept in diagnostics; CPU/GPU temperatures appear inline when identified. Repeated
 Btrfs subvolumes share a single filesystem row. Basic Fastfetch data and temperature detection

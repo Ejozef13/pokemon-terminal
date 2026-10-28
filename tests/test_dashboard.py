@@ -48,14 +48,14 @@ class DashboardTests(unittest.TestCase):
             self.assertIn(text, plain)
         for text in ('NETWORK', 'LAN', 'DNS', 'WAN', 'Display', '192.0.2', '198.51.100'):
             self.assertNotIn(text, plain)
-        self.assertTrue(all(dashboard.visible_width(row) == 76 for row in rows[:-1]))
-        self.assertIn('\033[48;2;91;157;255m', '\n'.join(rows))
+        self.assertTrue(all(0 < dashboard.visible_width(row) <= 76 for row in rows[:-1]))
+        self.assertIn('\033[48;2;0;230;160m', '\n'.join(rows))
         for shade in (dashboard.TEAL, dashboard.BLUE, dashboard.CACHY_GREEN):
             self.assertIn(dashboard.color('', shade).split('m')[0] + 'm', '\n'.join(rows))
 
     def test_narrow_panel_keeps_borders_and_color_sequences(self):
         rows = dashboard.dashboard(self.sample(), 38, datetime(2026, 2, 28))
-        self.assertTrue(all(dashboard.visible_width(row) == 38 for row in rows[:-1]))
+        self.assertTrue(all(0 < dashboard.visible_width(row) <= 38 for row in rows[:-1]))
         clipped = dashboard.clip(dashboard.color('ABCD', dashboard.TEAL), 2)
         self.assertEqual(dashboard.CSI.sub('', clipped), 'AB')
         self.assertEqual(dashboard.visible_width(dashboard.clip('中AB', 3)), 3)

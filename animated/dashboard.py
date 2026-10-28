@@ -293,7 +293,7 @@ def sections(data, now):
         for day in week:
             value = f'{day:2}' if day else '  '
             if day == now.day:
-                value = '\033[48;2;91;157;255m' + terminal_color(value, 97)
+                value = '\033[48;2;0;230;160m' + terminal_color(value, 97)
             days.append(value)
         date_rows.append((f'{index}. Week', ' '.join(days)))
     return [('HARDWARE', TEAL, hardware), ('SYSTEM & SOFTWARE', BLUE, system),
@@ -303,11 +303,15 @@ def sections(data, now):
 def dashboard(data, width=76, now=None):
     now = now or datetime.now().astimezone()
     width = max(32, width)
-    inside = width - 2
     label_width = 14
-    value_width = inside - label_width - 5
     rows = []
     for index, (title, accent, entries) in enumerate(sections(data, now)):
+        # The width argument is a cap, not a fixed frame. Each section follows
+        # its longest value while keeping labels and arrows aligned.
+        content_width = max((visible_width(str(value)) for _, value in entries), default=0)
+        section_width = min(width, max(len(title) + 4, label_width + 7 + content_width))
+        inside = section_width - 2
+        value_width = inside - label_width - 5
         middle = ' ' + title + ' '
         remaining = inside - len(middle)
         border = ('┌' if index == 0 else '├') + '─' * (remaining // 2) + middle + '─' * (remaining - remaining // 2) + ('┐' if index == 0 else '┤')
