@@ -47,7 +47,7 @@ a current-month calendar, a highlighted current day, and palette dots:
   mounted disks, and display resolution/scaling/refresh rate.
 - **System & Software** in blue: host, distribution, kernel, uptime, packages,
   desktop, window manager, Fish version, and terminal version.
-- **Date & Calendar** in purple/cyan: local date/time, ISO week, weekdays, and month.
+- **Date & Calendar** in CachyOS green: local date/time, ISO week, weekdays, and month.
 
 Network modules are never requested or rendered. Fastfetch runs with an explicit
 local module list and without loading your global configuration. Your global
@@ -69,34 +69,71 @@ always stops drawing first.
 A new terminal gets a fresh animation. Nested shells inherit a marker and skip
 startup. SSH and noninteractive sessions also skip it.
 
-## Removing the duplicate old Venusaur
+## Animated-only installation
 
-The installer backs up and disables recognized old art calls in:
+The static artwork, renderer, conversion helper, and old static installer have
+been deleted from the current repository. There is no bundled static fallback:
+the player uses only your installed multi-frame GIF.
 
-- `~/.config/fish/config.fish`
-- Fish `conf.d/*.fish` startup files
-- `functions/fish_greeting.fish` and Pokemon/Venusaur function files
-- The original Bash startup hook
+The installer deletes the known retired files under the application configuration
+directory and disables old art calls in Fish/Bash configuration. Changed shell
+files are backed up; unrelated settings and unrelated artwork are preserved.
+Old calls stay disabled even if you later disable animation.
 
-It recognizes fastfetch/neofetch calls and image/text-art commands referring to
-Venusaur or the original Pokemon setup. Unrelated lines remain intact.
-Linked files and complex multi-line custom commands are left for manual review.
+If you have the nested clones created earlier, update **both** checkouts so old
+tracked files are removed from each:
 
-The new display is drawn at the **first prompt**, after startup configuration
-and greeting output. It clears that initial screen once, so leftover greeting art
-does not create a second Venusaur. Expiry simply stops updates; it does not print
-another image or re-run your greeting. Original art files remain stored for
-rollback, but are not part of the new Fish display.
+```fish
+cd /home/ejmr/pokemon-terminal
+git pull --ff-only origin main
+cd /home/ejmr/pokemon-terminal/pokemon-terminal
+git pull --ff-only origin main
+.venv/bin/python animated/install.py /home/ejmr/Downloads/pokemon-venusaur.gif
+```
 
-## Disable or restore
+The first prompt clears the initial screen and stale scrollback before showing
+one animated Venusaur. Original art is not reprinted when animation stops.
+Symlinked configuration and complex custom multi-line startup commands are left
+for manual inspection rather than overwriting unknown files.
+
+To disable animated startup without bringing back the retired artwork:
 
 ```fish
 .venv/bin/python animated/install.py --disable
 ```
 
-Then open a new terminal. Recognized original startup lines are restored. Backups
-remain under `${XDG_CONFIG_HOME:-$HOME/.config}/pokemon-terminal/animated/backups`.
-The original static installer and art remain available in the repository.
+## Accurate hardware and temperatures
+
+On CachyOS, ensure the local detection tools are installed:
+
+```fish
+sudo pacman -S --needed fastfetch lm_sensors pciutils
+```
+
+Terminal startup itself **never uses sudo**, loads drivers, or changes sensor
+permissions. Fastfetch's basic CPU/GPU/desktop/package query is separate from its
+optional temperature query, so a failed thermal option no longer discards the
+other hardware data. The app also reads CPU information, motherboard identity,
+AMD/Intel/NVMe kernel temperature files, local PCI GPU names, pacman package
+counts, desktop/session information, and KDE display data where available.
+
+CPU package temperature is displayed with CPU information. Other readable sensor
+values are labelled by chip/card and sensor name (for example GPU junction or
+NVMe composite). Missing or disconnected sensors are not invented. Values are a
+startup snapshot, not a continuously refreshed hardware monitor.
+
+If anything still says Unavailable, run the diagnostic command on **your PC**:
+
+```fish
+.venv/bin/python animated/dashboard.py --diagnose
+```
+
+It reports Fastfetch errors, detected modules, readable temperature files, driver
+presence, and local hardware readings. This distinguishes unsupported hardware,
+missing tools, and permission errors. Kernel/driver support determines which
+temperatures are exposed; installing a Python dependency cannot grant access to
+an unexposed sensor. Sensor detection is validated with fixtures in cloud tests;
+actual desktop sensor access must be verified on the desktop.
 
 ## Fresh installation and development
 

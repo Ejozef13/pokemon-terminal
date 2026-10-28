@@ -62,7 +62,7 @@ function _pokemon_prompt_first --on-event fish_prompt
     set -l rows "$prepared[2]"
     # Run after config.fish and fish_greeting, removing any previous startup art.
     read -z -l initial_frame < "$_pokemon_cache/0.ansi"
-    printf '\e[H\e[2J%s\e[%s;1H' "$initial_frame" (math "$rows + 2")
+    printf '\e[H\e[2J\e[3J%s\e[%s;1H' "$initial_frame" (math "$rows + 2")
     set -g _pokemon_active 1
     # Ctrl-L freezes first, then performs the normal reader clear operation.
     bind --preset \cl '_pokemon_prompt_stop; commandline -f clear-screen'

@@ -44,9 +44,17 @@ For literal ASCII instead of colored Unicode half-block pixels:
 .venv/bin/python animated/venusaur.py /path/to/venusaur.gif --ascii --width 48 --keep-frame
 ```
 
-Default rendering preserves sprite colors and transparent pixels. GIFs use their
-actual frames and timing. PNG/JPEG input to the standalone player gets a simulated
-bob. The desktop GIF is not bundled in this repository.
+Rendering preserves sprite colors and transparent pixels. Only multi-frame GIFs
+are accepted. The desktop GIF is user supplied, not bundled in the repository.
+There is no static-art fallback.
 
-The old text artwork is still available for manual playback or rollback:
-`python3 animated/venusaur.py --duration 3 --keep-frame`.
+
+## Detection and cleanup
+
+The calendar uses CachyOS green. Basic Fastfetch data and temperature detection
+are separate queries, and read-only local Linux probes fill missing fields.
+Use `python3 animated/dashboard.py --diagnose` to inspect real detection failures.
+Sensors are labelled by chip/card, and no privileged command runs at startup.
+
+The retired static implementation is removed. Installation cleans its known
+configuration copies and never re-enables its startup calls.

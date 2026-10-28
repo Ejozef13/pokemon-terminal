@@ -1,5 +1,6 @@
 """CachyOS-colored local dashboard, built from explicitly selected Fastfetch modules."""
 import calendar
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 import json
 import math
@@ -10,10 +11,12 @@ import re
 import shutil
 import subprocess
 import unicodedata
+import hardware
 
 CSI = re.compile(r'\x1b\[[0-?]*[ -/]*[@-~]')
 RESET = '\033[0m'
-TEAL, CYAN, BLUE, PURPLE = '#00cbb8', '#00cfff', '#5b9dff', '#a785ff'
+TEAL, CYAN, BLUE = '#00cbb8', '#00cfff', '#5b9dff'
+CACHY_GREEN = '#00e6a0'
 WHITE, GREEN = '#d8e8ee', '#9bd65d'
 MODULES = ('CPU', 'GPU', 'Memory', 'Disk', 'Display', 'Host', 'OS', 'Kernel',
            'Uptime', 'Packages', 'DE', 'WM', 'Shell', 'Terminal')
@@ -106,29 +109,86 @@ def shell_context(results):
     return results
 
 
+def fastfetch_probe(executable, thermal=False):
+    modules = ('CPU', 'GPU') if thermal else MODULES
+    args = [executable, '--config', 'none', '--structure', ':'.join(modules),
+            '--format', 'json']
+    if thermal:
+        args += ['--cpu-temp', 'true', '--gpu-temp', 'true']
+    try:
+        response = subprocess.run(args, capture_output=True, text=True,
+                                  timeout=2 if thermal else 4, check=True)
+        entries = json.loads(response.stdout)
+        if not isinstance(entries, list):
+            raise ValueError('Expected a module list')
+        values, errors = {}, []
+        for entry in entries:
+            if not isinstance(entry, dict) or str(entry.get('type', '')).upper() not in ALLOWED_MODULES:
+                continue
+            name = entry['type'].lower()
+            expected = list if name in ('gpu', 'disk', 'display') else dict
+            if 'result' in entry and isinstance(entry['result'], expected):
+                value = entry['result']
+                values[name] = [item for item in value if isinstance(item, dict)] if expected is list else value
+            elif entry.get('error'):
+                errors.append(name + ': ' + clean(entry['error']))
+            else:
+                errors.append(name + ': unsupported result format')
+        return values, errors
+    except subprocess.CalledProcessError as error:
+        return {}, ['Fastfetch rejected ' + ('temperature options: ' if thermal else 'base query: ')
+                    + clean((error.stderr or str(error)).strip())[:300]]
+    except subprocess.TimeoutExpired:
+        return {}, ['Fastfetch ' + ('temperature' if thermal else 'base') + ' query timed out']
+    except (OSError, ValueError, KeyError) as error:
+        return {}, ['Fastfetch: ' + clean(error)]
+
+
 def collect():
+    # Optional thermal/version options must never discard otherwise valid data.
+    data, errors = local_fallback(), []
     executable = shutil.which('fastfetch')
+    primary, thermal = {}, {}
     if executable:
-        try:
-            response = subprocess.run(
-                [executable, '--config', 'none', '--structure', ':'.join(MODULES),
-                 '--cpu-temp', 'true', '--gpu-temp', 'true', '--detect-version', 'true', '--format', 'json'],
-                capture_output=True, text=True, timeout=5, check=True)
-            entries = json.loads(response.stdout)
-            if not isinstance(entries, list):
-                raise ValueError('Expected a module list')
-            results = {entry['type'].lower(): entry['result'] for entry in entries
-                       if isinstance(entry, dict) and 'result' in entry and 'type' in entry
-                       and entry['type'].upper() in ALLOWED_MODULES}
-            if results:
-                return shell_context(results)
-        except (OSError, subprocess.SubprocessError, ValueError, KeyError):
-            pass
-    return shell_context(local_fallback())
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            base_future = pool.submit(fastfetch_probe, executable)
+            thermal_future = pool.submit(fastfetch_probe, executable, True)
+            primary, base_errors = base_future.result()
+            thermal, thermal_errors = thermal_future.result()
+        errors.extend(base_errors + thermal_errors)
+        data.update(primary)
+    else:
+        errors.append('Fastfetch is not installed or not on PATH')
+    local = hardware.extra_info()
+    for name, value in local.items():
+        # Use direct system probes only where Fastfetch could not supply data.
+        if name not in primary or not primary[name]:
+            data[name] = value
+        elif isinstance(value, dict) and isinstance(data.get(name), dict):
+            for field, fallback in value.items():
+                if not data[name].get(field):
+                    data[name][field] = fallback
+    if not data.get('display'):
+        displays = hardware.display_info()
+        if displays:
+            data['display'] = displays
+    if isinstance(thermal.get('cpu'), dict) and thermal['cpu'].get('temperature') is not None:
+        data.setdefault('cpu', {}).update(thermal['cpu'])
+    # Match thermal GPU entries by name, never by enumeration order.
+    for gpu in data.get('gpu', []):
+        measured = next((item for item in thermal.get('gpu', [])
+                         if item.get('name') == gpu.get('name') and item.get('temperature') is not None), None)
+        if measured:
+            gpu['temperature'] = measured['temperature']
+    data = hardware.enrich(data)
+    data['diagnostics'] = {'fastfetch': executable or 'not found', 'errors': errors,
+                           'modules': sorted(primary),
+                           'sensor_count': len(hardware.sensors())}
+    return shell_context(data)
 
 
 def temperature(value):
-    return color(f"{value:.1f}°C", GREEN) if number(value, -1) > 0 else ''
+    return color(f"{value:.1f}°C", GREEN) if isinstance(value, (int, float)) and math.isfinite(value) and -20 <= value <= 125 else ''
 
 
 def usage(data):
@@ -167,6 +227,9 @@ def sections(data, now):
         if gpu.get('type') and gpu['type'] != 'Unknown':
             text += ' [' + clean(gpu['type']) + ']'
         hardware.append(('GPU', text))
+    for sensor in data.get('sensors', []):
+        label = ' '.join(filter(None, (sensor['chip'], sensor.get('device'), sensor['label'])))
+        hardware.append(('Sensor', clean(label) + ' ' + temperature(sensor['temperature'])))
     hardware.append(('RAM', usage(data.get('memory', {}))))
     for disk in data.get('disk') or [{}]:
         hardware.append(('ROM ' + clean(disk.get('mountpoint', '')),
@@ -218,17 +281,17 @@ def sections(data, now):
         ('Terminal', named(data.get('terminal'))),
     ]
     date_rows = [('Date', now.strftime('%a, %d %b %Y - %H:%M') + f' (W{now.isocalendar().week:02d})'),
-                 ('Days', color('Mo Tu We Th Fr Sa Su', CYAN))]
+                 ('Days', color('Mo Tu We Th Fr Sa Su', CACHY_GREEN))]
     for index, week in enumerate(calendar.Calendar(firstweekday=0).monthdayscalendar(now.year, now.month), 1):
         days = []
         for day in week:
             value = f'{day:2}' if day else '  '
             if day == now.day:
-                value = '\033[7m' + color(value, CYAN)
+                value = '\033[7m' + color(value, CACHY_GREEN)
             days.append(value)
         date_rows.append((f'{index}. Week', ' '.join(days)))
     return [('HARDWARE', TEAL, hardware), ('SYSTEM & SOFTWARE', BLUE, system),
-            ('DATE & CALENDAR', PURPLE, date_rows)]
+            ('DATE & CALENDAR', CACHY_GREEN, date_rows)]
 
 
 def dashboard(data, width=76, now=None):
@@ -253,9 +316,25 @@ def dashboard(data, width=76, now=None):
             rows.append(line)
     rows.append(color('└' + '─' * inside + '┘', TEAL))
     rows.append(' ' + ' '.join(color('●', shade) for shade in
-                              (WHITE, TEAL, CYAN, BLUE, PURPLE, GREEN, '#f3c969', '#ed6a73')))
+                              (WHITE, TEAL, CYAN, BLUE, CACHY_GREEN, GREEN, '#f3c969', '#ed6a73')))
     return rows
 
 
 def system_info(width=76):
     return dashboard(collect(), width)
+
+
+if __name__ == '__main__':
+    import argparse
+    parser = argparse.ArgumentParser(description='Read-only local hardware diagnostics')
+    parser.add_argument('--diagnose', action='store_true')
+    args = parser.parse_args()
+    data = collect()
+    if args.diagnose:
+        print(json.dumps({'detection': data['diagnostics'], 'sensor_access': hardware.sensor_access(), 'cpu': data.get('cpu'),
+                          'gpu': data.get('gpu'), 'sensors': data.get('sensors'),
+                          'desktop': data.get('de'), 'window_manager': data.get('wm'),
+                          'display': data.get('display'), 'packages': data.get('packages')},
+                         indent=2))
+    else:
+        print('\n'.join(dashboard(data)))

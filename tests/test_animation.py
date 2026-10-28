@@ -49,8 +49,8 @@ class AnimationTests(unittest.TestCase):
             fetch = Path(directory) / 'fastfetch'
             payload = json.dumps([{'type': 'OS', 'result': {'prettyName': 'AnimationTest'}}])
             fetch.write_text('#!/bin/sh\nprintf \'%s\\n\' ' + shlex.quote(payload) + '\n')
-            art = Path(directory) / 'art.txt'
-            art.write_text('ABC\nDEF\n')
+            art = Path(directory) / 'sprite.gif'
+            Image.new('RGBA', (4, 4), 'red').save(art, save_all=True, append_images=[Image.new('RGBA', (4, 4), 'blue')], duration=120, loop=0)
             fetch.chmod(0o755)
             master, slave = pty.openpty()
             self.addCleanup(os.close, master)
@@ -83,8 +83,8 @@ class AnimationTests(unittest.TestCase):
         import signal
         import time
         with tempfile.TemporaryDirectory() as directory:
-            art = Path(directory) / 'art.txt'
-            art.write_text('VENUSAUR_TEST\n')
+            art = Path(directory) / 'sprite.gif'
+            Image.new('RGBA', (4, 4), 'red').save(art, save_all=True, append_images=[Image.new('RGBA', (4, 4), 'blue')], duration=120, loop=0)
             master, slave = pty.openpty()
             self.addCleanup(os.close, master)
             self.addCleanup(os.close, slave)
@@ -95,10 +95,10 @@ class AnimationTests(unittest.TestCase):
             self.addCleanup(lambda: process.poll() is None and process.kill())
             output = bytearray()
             deadline = time.monotonic() + 5
-            while b'VENUSAUR_TEST' not in output and time.monotonic() < deadline:
+            while '▀'.encode() not in output and time.monotonic() < deadline:
                 if select.select([master], [], [], .1)[0]:
                     output.extend(os.read(master, 65536))
-            self.assertIn(b'VENUSAUR_TEST', output)
+            self.assertIn('▀'.encode(), output)
             process.send_signal(signal.SIGINT)
             deadline = time.monotonic() + 5
             while time.monotonic() < deadline:
@@ -109,5 +109,5 @@ class AnimationTests(unittest.TestCase):
             while select.select([master], [], [], .05)[0]:
                 output.extend(os.read(master, 65536))
             self.assertEqual(process.wait(timeout=2), 0)
-            self.assertIn(b'VENUSAUR_TEST', output.split(b'\x1b[?1049l')[-1])
+            self.assertIn('▀'.encode(), output.split(b'\x1b[?1049l')[-1])
             self.assertIn(b'\x1b[?25h', output)

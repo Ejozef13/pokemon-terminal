@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Enable or disable animated startup, preserving original files for rollback."""
+"""Install animated-only startup and retire obsolete static startup copies."""
 import argparse
 import math
 import json
@@ -37,8 +37,8 @@ def migrate(text, disable=False):
     result = []
     for line in text.splitlines(keepends=True):
         if disable:
-            if line.rstrip() != SUPPRESSED:
-                result.append(line[len(TAG):] if line.startswith(TAG) else line)
+            # Disabling animation must never resurrect retired static artwork.
+            result.append(line)
         elif line.startswith(TAG) or line.lstrip().startswith('#'):
             result.append(line)
         elif ('bashrc-pokemon.sh' in line or
@@ -123,12 +123,13 @@ def main():
             write_config(path, migrate(text, True), backups)
         if fish_hook.exists():
             write_config(fish_hook, '# Animated Pokemon startup disabled.\n', backups)
-        print('Animated startup disabled. Original startup lines restored. Open a new terminal.')
+        print('Animated startup disabled. Retired startup calls remain disabled. Open a new terminal.')
         return
     shutil.copy2(ROOT / 'animated/venusaur.py', base / 'venusaur.py')
     shutil.copy2(ROOT / 'animated/startup.py', base / 'startup.py')
     shutil.copy2(ROOT / 'animated/prompt.py', base / 'prompt.py')
     shutil.copy2(ROOT / 'animated/dashboard.py', base / 'dashboard.py')
+    shutil.copy2(ROOT / 'animated/hardware.py', base / 'hardware.py')
     shutil.copy2(ROOT / 'animated/fish-prompt.fish', base / 'fish-prompt.fish')
     destination = base / 'venusaur.gif'
     if args.gif.resolve() != destination.resolve():
@@ -177,14 +178,23 @@ if status is-interactive; and not set -q POKEMON_TERMINAL_SHOWN; and not set -q 
 end
 """
     write_config(fish_hook, fish, backups)
+    # Only delete known retired application files, not unrelated user artwork.
+    for retired in (base.parent / 'bashrc-pokemon.sh',
+                    base.parent / 'terminal-art/venusaur.txt'):
+        if retired.is_file() or retired.is_symlink():
+            retired.unlink()
+            print(f'Removed retired static file: {retired}')
+    retired_dir = base.parent / 'terminal-art'
+    if retired_dir.is_dir() and not retired_dir.is_symlink() and not any(retired_dir.iterdir()):
+        retired_dir.rmdir()
     (base / 'enabled').touch()
     limit = f'up to {args.duration:g}s' if args.duration else 'no idle timeout'
     print(f'Fish: prompt available during animation ({limit}); first command freezes it.')
     print('Bash: timed foreground playback remains available; idle-prompt animation requires Fish.')
     print('Open a NEW terminal. Use clear or Ctrl-L for a clean workspace.')
-    print('Original files retained; matching startup lines backed up and disabled.')
+    print('Static implementation removed; matching startup calls backed up and disabled.')
     print('Recognized old art calls in Fish config, conf.d, and greeting files are disabled.')
-    print('First-prompt drawing clears remaining startup artwork without deleting its files.')
+    print('First-prompt drawing clears stale startup artwork and scrollback.')
     print('Rollback: python3 animated/install.py --disable')
 
 

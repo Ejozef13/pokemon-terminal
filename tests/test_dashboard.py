@@ -50,7 +50,7 @@ class DashboardTests(unittest.TestCase):
             self.assertNotIn(text, plain)
         self.assertTrue(all(dashboard.visible_width(row) == 76 for row in rows[:-1]))
         self.assertIn('\033[7m', '\n'.join(rows))
-        for shade in (dashboard.TEAL, dashboard.BLUE, dashboard.PURPLE):
+        for shade in (dashboard.TEAL, dashboard.BLUE, dashboard.CACHY_GREEN):
             self.assertIn(dashboard.color('', shade).split('m')[0] + 'm', '\n'.join(rows))
 
     def test_narrow_panel_keeps_borders_and_color_sequences(self):
@@ -67,13 +67,16 @@ class DashboardTests(unittest.TestCase):
                    {'type': 'LocalIp', 'result': {'address': '192.0.2.123'}}]
         result = subprocess.CompletedProcess([], 0, json.dumps(payload), '')
         with patch.object(dashboard.shutil, 'which', return_value='/usr/bin/fastfetch'), \
-             patch.object(dashboard.subprocess, 'run', return_value=result) as run:
+             patch.object(dashboard.subprocess, 'run', return_value=result) as run, \
+             patch.object(dashboard.hardware, 'extra_info', return_value={}), \
+             patch.object(dashboard.hardware, 'display_info', return_value=[]), \
+             patch.object(dashboard.hardware, 'enrich', side_effect=lambda data: data):
             collected = dashboard.collect()
             self.assertEqual(collected['os']['prettyName'], 'CachyOS')
             self.assertEqual(collected['memory']['used'], 25)
             self.assertEqual(collected['kernel']['release'], '6.18.1')
             self.assertNotIn('localip', collected)
-        args = run.call_args.args[0]
+        args = next(call.args[0] for call in run.call_args_list if '--cpu-temp' not in call.args[0])
         self.assertEqual(args[args.index('--config') + 1], 'none')
         requested = args[args.index('--structure') + 1].lower().split(':')
         self.assertNotIn('localip', requested)
@@ -94,3 +97,40 @@ class DashboardTests(unittest.TestCase):
             data = dashboard.shell_context({'shell': {'prettyName': 'python3'}})
         self.assertEqual(data['shell'], {'prettyName': 'fish', 'version': '4.3.0'})
         self.assertEqual(data['terminal'], {'prettyName': 'Konsole', 'version': '26.04.1'})
+
+    def test_failed_temperature_options_do_not_discard_base_hardware(self):
+        def execute(args, **kwargs):
+            if '--cpu-temp' in args:
+                raise subprocess.CalledProcessError(1, args, stderr='Unknown optional argument')
+            payload = [{'type': 'CPU', 'result': {'cpu': 'Real CPU'}},
+                       {'type': 'GPU', 'result': [{'name': 'Real GPU'}]},
+                       {'type': 'Packages', 'result': {'all': 1933}}]
+            return subprocess.CompletedProcess(args, 0, json.dumps(payload), '')
+        with patch.object(dashboard.shutil, 'which', return_value='/usr/bin/fastfetch'), \
+             patch.object(dashboard.subprocess, 'run', side_effect=execute), \
+             patch.object(dashboard.hardware, 'extra_info', return_value={}), \
+             patch.object(dashboard.hardware, 'display_info', return_value=[]), \
+             patch.object(dashboard.hardware, 'enrich', side_effect=lambda data: data):
+            data = dashboard.collect()
+        self.assertEqual(data['cpu']['cpu'], 'Real CPU')
+        self.assertEqual(data['gpu'][0]['name'], 'Real GPU')
+        self.assertEqual(data['packages']['all'], 1933)
+        self.assertIn('Unknown optional argument', str(data['diagnostics']['errors']))
+
+    def test_failed_fastfetch_keeps_direct_cpu_gpu_and_package_probes(self):
+        direct = {'cpu': {'cpu': 'AMD Ryzen 7 9700X'},
+                  'gpu': [{'name': 'Radeon RX 9070 XT'}],
+                  'packages': {'all': 1933, 'pacman': 1933},
+                  'de': {'prettyName': 'KDE Plasma'}}
+        with patch.object(dashboard.shutil, 'which', return_value='/usr/bin/fastfetch'), \
+             patch.object(dashboard.subprocess, 'run', side_effect=subprocess.CalledProcessError(
+                 1, 'fastfetch', stderr='Unsupported argument')), \
+             patch.object(dashboard.hardware, 'extra_info', return_value=direct), \
+             patch.object(dashboard.hardware, 'display_info', return_value=[]), \
+             patch.object(dashboard.hardware, 'enrich', side_effect=lambda data: data):
+            data = dashboard.collect()
+        self.assertEqual(data['cpu']['cpu'], 'AMD Ryzen 7 9700X')
+        self.assertEqual(data['gpu'][0]['name'], 'Radeon RX 9070 XT')
+        self.assertEqual(data['packages']['all'], 1933)
+        self.assertEqual(data['de']['prettyName'], 'KDE Plasma')
+        self.assertIn('Unsupported argument', str(data['diagnostics']['errors']))

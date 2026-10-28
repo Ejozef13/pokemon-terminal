@@ -61,8 +61,10 @@ class StartupTests(unittest.TestCase):
                            check=True)
         result = self.install('--disable')
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(bashrc.read_text().strip(), original.strip())
-        self.assertEqual(fish_config.read_text(), fish_original)
+        self.assertIn('# my config', bashrc.read_text())
+        self.assertIn('# pokemon-terminal animated: disabled original:', bashrc.read_text())
+        self.assertIn('# keep function', fish_config.read_text())
+        self.assertIn('# pokemon-terminal animated: disabled original:', fish_config.read_text())
         self.assertFalse((self.base / 'enabled').exists())
 
     def test_upgrade_replaces_previous_launcher(self):
@@ -81,7 +83,7 @@ class StartupTests(unittest.TestCase):
         self.assertIn('POKEMON_TERMINAL_SHOWN', hook.read_text())
         self.assertTrue(list((self.base / 'backups').glob(hook.name + '.*')))
 
-    def test_old_art_in_confd_and_greeting_is_disabled_and_restored(self):
+    def test_old_art_in_confd_and_greeting_never_returns_on_disable(self):
         greeting = self.config / 'fish/functions/fish_greeting.fish'
         extra = self.config / 'fish/conf.d/old-pokemon.fish'
         greeting.parent.mkdir(parents=True)
@@ -99,8 +101,20 @@ class StartupTests(unittest.TestCase):
         self.assertIn('echo keep-my-greeting', greeting.read_text())
         result = self.install('--disable')
         self.assertEqual(result.returncode, 0, result.stderr)
-        for path, text in originals.items():
-            self.assertEqual(path.read_text(), text)
+        for path in originals:
+            self.assertIn('# pokemon-terminal animated: disabled original:', path.read_text())
+
+    def test_retired_copies_are_deleted_but_other_art_is_preserved(self):
+        retired = self.base.parent / 'terminal-art'
+        retired.mkdir(parents=True)
+        (retired / 'venusaur.txt').write_text('obsolete')
+        (retired / 'custom.txt').write_text('user-owned')
+        (self.base.parent / 'bashrc-pokemon.sh').write_text('obsolete')
+        result = self.install(self.gif)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertFalse((retired / 'venusaur.txt').exists())
+        self.assertFalse((self.base.parent / 'bashrc-pokemon.sh').exists())
+        self.assertEqual((retired / 'custom.txt').read_text(), 'user-owned')
 
     def test_bad_gif_does_not_change_startup(self):
         (self.home / '.bashrc').write_text('# keep exactly\n')

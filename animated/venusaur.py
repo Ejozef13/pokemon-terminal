@@ -11,7 +11,6 @@ import sys
 import time
 
 CSI = re.compile(r'\x1b\[[0-?]*[ -/]*[@-~]')
-ROOT = Path(__file__).resolve().parents[1]
 
 from dashboard import clip, system_info, visible_width
 
@@ -49,15 +48,12 @@ def render(image, ascii_only):
 
 
 def load_frames(path, width, ascii_only):
-    if path is None or path.suffix.lower() == '.txt':
-        if ascii_only:
-            raise ValueError('--ascii requires an image file')
-        text = (path or ROOT / 'terminal-art/venusaur.txt').read_text()
-        # Bundled art includes cursor control; retain only SGR color sequences.
-        text = CSI.sub(lambda m: m[0] if m[0].endswith('m') else '', text)
-        return [text.splitlines()], [.125]
+    if path is None:
+        path = Path(os.environ.get('XDG_CONFIG_HOME', Path.home() / '.config')) / 'pokemon-terminal/animated/venusaur.gif'
     from PIL import Image, ImageOps, ImageSequence
     with Image.open(path) as source:
+        if getattr(source, 'n_frames', 1) < 2:
+            raise ValueError('Supply a multi-frame animated GIF')
         if getattr(source, 'n_frames', 1) > 300:
             raise ValueError('Use an animation with at most 300 frames')
         images, durations = [], []
@@ -104,7 +100,7 @@ def layout(art, info, columns, height, offset, gap=6, center_vertical=True):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('image', nargs='?', type=Path,
-                        help='GIF, PNG, JPEG, or terminal art; defaults to bundled art')
+                        help='Animated GIF; defaults to the installed GIF')
     parser.add_argument('--width', type=int, default=40)
     parser.add_argument('--gap', type=int, default=6, help='Columns between Venusaur and system info')
     parser.add_argument('--quiet', action='store_true', help='Hide the skip hint')
@@ -149,8 +145,7 @@ def main(argv=None):
             if args.duration and now - started >= args.duration:
                 break
             columns, height = shutil.get_terminal_size()
-            # Still images get an explicit gentle bob; GIFs use their own poses.
-            offset = int((now - started) % 1.4 >= .7) if len(frames) == 1 else 0
+            offset = 0
             rows = layout(frames[index], info, columns, height, offset, args.gap)
             sys.stdout.write('\033[H\033[2J' + '\r\n'.join(rows) +
                              ('' if args.quiet else '\r\n\033[0mCtrl-C to skip animation'))
