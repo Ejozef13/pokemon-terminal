@@ -74,3 +74,13 @@ python3 -m unittest discover -s tests -v
 Image tests require Pillow. To remove startup behavior, delete the
 pokemon-terminal source line from ~/.bashrc and remove the pokemon-terminal
 directory under ${XDG_CONFIG_HOME:-$HOME/.config}.
+
+## Separate animated experiment
+
+The original static setup remains available. See [animated/README.md](animated/README.md)
+for an opt-in Venusaur player with fastfetch information, GIF idle frames,
+plain ASCII mode, and a bundled-art bobbing demo. Start with:
+
+```bash
+python3 animated/venusaur.py --duration 3
+```
