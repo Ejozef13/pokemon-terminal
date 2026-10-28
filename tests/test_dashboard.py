@@ -174,4 +174,3 @@ class DashboardTests(unittest.TestCase):
         rules = [dashboard.visible_width(row) for row in rows if '─' in row]
         self.assertEqual(len(set(rules)), 1)
         self.assertIn('\x1b[48;2;0;230;160m\x1b[38;2;0;0;0m28', '\n'.join(rows))
-
