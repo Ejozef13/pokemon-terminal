@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """Enable or disable animated startup, preserving original files for rollback."""
 import argparse
+import math
 import json
 import os
 import re
 from pathlib import Path
 import shutil
-import subprocess
 import sys
 import time
 
@@ -73,10 +73,10 @@ def main():
     parser.add_argument('--width', type=int, default=48)
     parser.add_argument('--gap', type=int, default=8)
     parser.add_argument('--fps', type=int, default=8)
-    parser.add_argument('--height', type=int, default=55, help='Display pane percent of terminal height')
+    parser.add_argument('--duration', type=float, default=30, help='Startup animation seconds; Ctrl-C skips early')
     args = parser.parse_args()
-    if not 8 <= args.width <= 120 or not 1 <= args.gap <= 40 or not 1 <= args.fps <= 30 or not 30 <= args.height <= 70:
-        parser.error('width: 8–120, gap: 1–40, fps: 1–30, height: 30–70')
+    if not 8 <= args.width <= 120 or not 1 <= args.gap <= 40 or not 1 <= args.fps <= 30 or not math.isfinite(args.duration) or not 0 < args.duration <= 300:
+        parser.error('width: 8–120, gap: 1–40, fps: 1–30, duration: greater than 0 and at most 300')
     config_home = Path(os.environ.get('XDG_CONFIG_HOME', Path.home() / '.config'))
     base = config_home / 'pokemon-terminal/animated'
     backups = base / 'backups'
@@ -87,8 +87,6 @@ def main():
     if not args.disable:
         if not args.gif:
             parser.error('Supply your animated GIF, or use --disable')
-        if not shutil.which('tmux'):
-            parser.error('Install tmux first (CachyOS/Arch: sudo pacman -S tmux)')
         try:
             from PIL import Image
             with Image.open(args.gif) as image:
@@ -121,17 +119,18 @@ def main():
     if args.gif.resolve() != destination.resolve():
         shutil.copy2(args.gif, destination)
     config = dict(python=str(Path(sys.executable).absolute()), width=args.width,
-                  gap=args.gap, fps=args.fps, height=args.height)
+                  gap=args.gap, fps=args.fps, duration=args.duration)
     (base / 'config.json').write_text(json.dumps(config, indent=2) + '\n')
     # Fixed hook paths expand XDG_CONFIG_HOME at startup and support spaces.
     bash_hook = '''
 # >>> pokemon-terminal animated >>>
-if [[ $- == *i* && -z ${TMUX:-} && -z ${SSH_CONNECTION:-} && ${TERM:-dumb} != dumb ]]; then
+if [[ $- == *i* && -z ${POKEMON_TERMINAL_SHOWN:-} && -z ${SSH_CONNECTION:-} && ${TERM:-dumb} != dumb ]]; then
     _pokemon_dir="${XDG_CONFIG_HOME:-$HOME/.config}/pokemon-terminal/animated"
     if [[ -f "$_pokemon_dir/enabled" ]]; then
         # Read the interpreter path as data, never as shell code.
         _pokemon_python=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["python"])' "$_pokemon_dir/config.json")
         if [[ -x "$_pokemon_python" ]]; then
+            export POKEMON_TERMINAL_SHOWN=1
             "$_pokemon_python" "$_pokemon_dir/startup.py"
         fi
     fi
@@ -145,7 +144,7 @@ fi
             updated = updated.rstrip('\n') + '\n' + bash_hook
         write_config(path, updated, backups)
     fish = """# Managed by pokemon-terminal animated installer.
-if status is-interactive; and not set -q TMUX; and not set -q SSH_CONNECTION
+if status is-interactive; and not set -q POKEMON_TERMINAL_SHOWN; and not set -q SSH_CONNECTION
     if test "$TERM" != dumb
         set -l pokemon_config "$HOME/.config"
         if set -q XDG_CONFIG_HOME
@@ -155,6 +154,7 @@ if status is-interactive; and not set -q TMUX; and not set -q SSH_CONNECTION
         if test -f "$pokemon_dir/enabled"
             set -l pokemon_python (python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["python"])' "$pokemon_dir/config.json")
             if test -x "$pokemon_python"
+                set -gx POKEMON_TERMINAL_SHOWN 1
                 "$pokemon_python" "$pokemon_dir/startup.py"
             end
         end
@@ -163,7 +163,8 @@ end
 """
     write_config(fish_hook, fish, backups)
     (base / 'enabled').touch()
-    print('Enabled animated startup for Fish and Bash. Open a NEW terminal to test.')
+    print(f'Enabled {args.duration:g}-second animated startup for Fish and Bash.')
+    print('Open a NEW terminal. Ctrl-C skips to the still frame and normal prompt.')
     print('Original files retained; matching startup lines backed up and disabled.')
     print('If your old art comes from another Fish conf.d file or a custom function,')
     print('disable that separate invocation manually; this installer does not edit unknown files.')

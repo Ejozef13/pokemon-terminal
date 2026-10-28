@@ -71,3 +71,36 @@ class AnimationTests(unittest.TestCase):
         self.assertNotIn('OS:', rows[0])
         self.assertIn('OS: Debian', rows[4])
         self.assertIn('Kernel: Linux', rows[5])
+
+    def test_skip_leaves_final_still_and_restores_cursor(self):
+        import signal
+        import time
+        with tempfile.TemporaryDirectory() as directory:
+            art = Path(directory) / 'art.txt'
+            art.write_text('VENUSAUR_TEST\n')
+            master, slave = pty.openpty()
+            self.addCleanup(os.close, master)
+            self.addCleanup(os.close, slave)
+            process = subprocess.Popen(
+                ['python3', str(ROOT / 'animated/venusaur.py'), str(art),
+                 '--duration', '30', '--keep-frame'],
+                stdout=slave, stderr=slave, env=dict(os.environ, TERM='xterm-256color'))
+            self.addCleanup(lambda: process.poll() is None and process.kill())
+            output = bytearray()
+            deadline = time.monotonic() + 5
+            while b'VENUSAUR_TEST' not in output and time.monotonic() < deadline:
+                if select.select([master], [], [], .1)[0]:
+                    output.extend(os.read(master, 65536))
+            self.assertIn(b'VENUSAUR_TEST', output)
+            process.send_signal(signal.SIGINT)
+            deadline = time.monotonic() + 5
+            while time.monotonic() < deadline:
+                if select.select([master], [], [], .1)[0]:
+                    output.extend(os.read(master, 65536))
+                if process.poll() is not None:
+                    break
+            while select.select([master], [], [], .05)[0]:
+                output.extend(os.read(master, 65536))
+            self.assertEqual(process.wait(timeout=2), 0)
+            self.assertIn(b'VENUSAUR_TEST', output.split(b'\x1b[?1049l')[-1])
+            self.assertIn(b'\x1b[?25h', output)

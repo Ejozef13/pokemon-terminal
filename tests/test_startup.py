@@ -20,9 +20,6 @@ class StartupTests(unittest.TestCase):
         self.base = self.config / 'pokemon-terminal/animated'
         self.tools = self.home / 'bin'
         self.tools.mkdir()
-        tmux = self.tools / 'tmux'
-        tmux.write_text('#!/bin/sh\nexit 0\n')
-        tmux.chmod(0o755)
         self.env = dict(os.environ, HOME=str(self.home),
                         XDG_CONFIG_HOME=str(self.config),
                         PATH=str(self.tools) + ':' + os.environ['PATH'])
@@ -65,6 +62,22 @@ class StartupTests(unittest.TestCase):
         self.assertEqual(fish_config.read_text(), fish_original)
         self.assertFalse((self.base / 'enabled').exists())
 
+    def test_upgrade_replaces_previous_launcher(self):
+        self.base.mkdir(parents=True)
+        (self.base / 'startup.py').write_text('# previous split-view launcher\n')
+        (self.base / 'config.json').write_text(json.dumps({'height': 55}))
+        hook = self.config / 'fish/conf.d/pokemon-terminal-animated.fish'
+        hook.parent.mkdir(parents=True)
+        hook.write_text('# previous split-view hook\n')
+        result = self.install(self.gif)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        config = json.loads((self.base / 'config.json').read_text())
+        self.assertEqual(config['duration'], 30)
+        self.assertNotIn('height', config)
+        self.assertNotIn('previous split-view', (self.base / 'startup.py').read_text())
+        self.assertIn('POKEMON_TERMINAL_SHOWN', hook.read_text())
+        self.assertTrue(list((self.base / 'backups').glob(hook.name + '.*')))
+
     def test_bad_gif_does_not_change_startup(self):
         (self.home / '.bashrc').write_text('# keep exactly\n')
         result = self.install(self.home / 'missing.gif')
@@ -72,12 +85,15 @@ class StartupTests(unittest.TestCase):
         self.assertEqual((self.home / '.bashrc').read_text(), '# keep exactly\n')
         self.assertFalse(self.base.exists())
 
-    def test_nested_session_does_not_launch(self):
-        subprocess.run(['python3', str(ROOT / 'animated/startup.py')],
-                       env=dict(self.env, TMUX='already running'), check=True)
+    @unittest.skipUnless(shutil.which('fish'), 'requires Fish')
+    def test_fish_startup_returns_to_same_shell_with_still(self):
+        self.check_fish_startup(skip=False)
 
-    @unittest.skipUnless(shutil.which('tmux') and shutil.which('fish'), 'requires tmux and Fish')
-    def test_real_fish_startup_two_terminals(self):
+    @unittest.skipUnless(shutil.which('fish'), 'requires Fish')
+    def test_fish_ctrl_c_skips_to_prompt(self):
+        self.check_fish_startup(skip=True)
+
+    def check_fish_startup(self, skip):
         import fcntl
         import pty
         import select
@@ -86,118 +102,64 @@ class StartupTests(unittest.TestCase):
         import termios
         import time
 
-        real_tmux, real_fish = shutil.which('tmux'), shutil.which('fish')
-        (self.tools / 'tmux').unlink()
+        fish = shutil.which('fish')
         fetch = self.tools / 'fastfetch'
         fetch.write_text('#!/bin/sh\nprintf "OS: StartupTest\\n"\n')
         fetch.chmod(0o755)
-        sockets = self.home / 'sockets'
-        sockets.mkdir(mode=0o700)
-        # Extracted Fish packages may lack their compiled /usr/share assets.
-        # Source the actual generated hook via Fish's init command in that case.
-        shell = real_fish
-        if not Path('/usr/share/fish/config.fish').exists():
-            import shlex
-            wrapper = self.tools / 'fish'
-            hook = 'source "$XDG_CONFIG_HOME/fish/conf.d/pokemon-terminal-animated.fish"'
-            wrapper.write_text('#!/bin/sh\nexec ' + shlex.join(
-                [real_fish, '--no-config', '--init-command', hook]) + ' "$@"\n')
-            wrapper.chmod(0o755)
-            shell = str(wrapper)
-        self.env.update(TERM='xterm-256color', SHELL=shell, TMUX_TMPDIR=str(sockets))
-        self.env.pop('TMUX', None)
+        self.env.update(TERM='xterm-256color')
+        self.env.pop('POKEMON_TERMINAL_SHOWN', None)
         self.env.pop('SSH_CONNECTION', None)
-        (self.home / '.tmux.conf').write_text('set -g base-index 1\nsetw -g pane-base-index 1\n')
-        result = self.install(self.gif)
+        result = self.install(self.gif, '--duration', '30' if skip else '.2')
         self.assertEqual(result.returncode, 0, result.stderr)
-        processes, masters = [], []
+        hook = 'bind \\r execute; bind \\n execute; source "$XDG_CONFIG_HOME/fish/conf.d/pokemon-terminal-animated.fish"'
+        master, slave = pty.openpty()
+        fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack('HHHH', 40, 140, 0, 0))
 
-        def terminal():
-            master, slave = pty.openpty()
-            fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack('HHHH', 40, 140, 0, 0))
+        def controlling_terminal():
+            os.setsid()
+            fcntl.ioctl(0, termios.TIOCSCTTY, 0)
 
-            def controlling_terminal():
-                os.setsid()
-                fcntl.ioctl(0, termios.TIOCSCTTY, 0)
+        process = subprocess.Popen(
+            [fish, '--no-config', '--init-command', hook, '-i'],
+            stdin=slave, stdout=slave, stderr=slave, env=self.env,
+            preexec_fn=controlling_terminal)
+        os.close(slave)
+        output = bytearray()
 
-            process = subprocess.Popen([shell, '-i'], stdin=slave, stdout=slave,
-                                       stderr=slave, env=self.env,
-                                       preexec_fn=controlling_terminal)
-            os.close(slave)
-            processes.append(process)
-            masters.append(master)
+        def read_until(predicate):
+            deadline = time.monotonic() + 6
+            while time.monotonic() < deadline:
+                if select.select([master], [], [], .1)[0]:
+                    try:
+                        output.extend(os.read(master, 65536))
+                    except OSError:
+                        break
+                if predicate(bytes(output)):
+                    return
+            self.fail('Terminal did not reach expected state: ' + repr(bytes(output[-1000:])))
 
         try:
-            terminal()
-            terminal()
-            deadline = time.monotonic() + 12
-            sessions = []
-            terminal_output = bytearray()
-            while time.monotonic() < deadline:
-                for master in masters:
-                    if select.select([master], [], [], .02)[0]:
-                        try:
-                            terminal_output.extend(os.read(master, 65536))
-                        except OSError:
-                            pass
-                listed = subprocess.run([real_tmux, 'list-sessions', '-F', '#S'],
-                                        env=self.env, capture_output=True, text=True)
-                sessions = listed.stdout.splitlines()
-                if len(sessions) == 2:
-                    panes = subprocess.run([real_tmux, 'list-panes', '-a', '-F', '#{pane_id}'],
-                                           env=self.env, capture_output=True, text=True)
-                    if len(panes.stdout.splitlines()) == 4:
-                        break
-            self.assertEqual(len(sessions), 2, listed.stderr + terminal_output[-2000:].decode(errors='replace'))
-            panes = subprocess.run([real_tmux, 'list-panes', '-a', '-F',
-                                    '#{pane_id} #{pane_current_command}'],
-                                   env=self.env, capture_output=True, text=True, check=True)
-            self.assertEqual(len(panes.stdout.splitlines()), 4, panes.stdout)
-            # Let fastfetch and the frame renderer finish, then inspect actual panes.
-            deadline = time.monotonic() + 5
-            captured = ''
-            while time.monotonic() < deadline:
-                captured = ''
-                for line in panes.stdout.splitlines():
-                    captured += subprocess.run([real_tmux, 'capture-pane', '-p', '-t', line.split()[0]],
-                                               env=self.env, capture_output=True, text=True).stdout
-                if 'OS: StartupTest' in captured:
-                    break
-            self.assertIn('OS: StartupTest', captured)
-            active = subprocess.run([real_tmux, 'list-panes', '-t', sessions[0], '-F',
-                                     '#{pane_id} #{pane_active}'],
-                                    env=self.env, capture_output=True, text=True, check=True)
-            shell_pane = next(line.split()[0] for line in active.stdout.splitlines()
-                              if line.endswith(' 1'))
-            subprocess.run([real_tmux, 'send-keys', '-t', shell_pane,
-                            'echo SHELL_READY', 'Enter'], env=self.env, check=True)
-            deadline = time.monotonic() + 5
-            while time.monotonic() < deadline:
-                shell_output = subprocess.run([real_tmux, 'capture-pane', '-p', '-t', shell_pane],
-                                              env=self.env, capture_output=True, text=True).stdout
-                if '\nSHELL_READY\n' in shell_output:
-                    break
-            self.assertIn('\nSHELL_READY\n', shell_output)
-            # Exiting one shell removes only its own animated session.
-            subprocess.run([real_tmux, 'send-keys', '-t', shell_pane, 'exit', 'Enter'],
-                           env=self.env, check=True)
-            deadline = time.monotonic() + 5
-            while time.monotonic() < deadline:
-                remaining = subprocess.run([real_tmux, 'list-sessions', '-F', '#S'],
-                                           env=self.env, capture_output=True, text=True).stdout.splitlines()
-                if len(remaining) == 1 and sessions[0] not in remaining:
-                    break
-            self.assertEqual(len(remaining), 1, str(remaining) + panes.stdout)
-            self.assertNotIn(sessions[0], remaining, 'initial=' + str(sessions) + ' panes=' + panes.stdout + ' active=' + active.stdout + terminal_output[-500:].decode(errors='replace'))
+            if skip:
+                read_until(lambda data: b'OS: StartupTest' in data)
+                os.write(master, b'\x03')
+            read_until(lambda data: b'OS: StartupTest' in data.split(b'\x1b[?1049l')[-1]
+                       and b'\x1b[?1049l' in data)
+            os.write(master, b'echo SHELL_READY\r')
+            read_until(lambda data: b'\rSHELL_READY\r\n' in data)
+            # Nested shells inherit the marker and skip another 30-second splash.
+            os.write(master, b'fish --no-config --init-command \'source "$XDG_CONFIG_HOME/fish/conf.d/pokemon-terminal-animated.fish"\' -c \'echo NESTED_READY\'\r')
+            read_until(lambda data: b'\rNESTED_READY\r\n' in data)
+            self.assertEqual(bytes(output).count(b'\x1b[?1049h'), 1)
+            self.assertIn(b'\x1b[?25h', output)
+            os.write(master, b'exit\r')
+            process.wait(timeout=5)
+            self.assertEqual(process.returncode, 0)
         finally:
-            subprocess.run([real_tmux, 'kill-server'], env=self.env, capture_output=True)
-            for process in processes:
-                if process.poll() is None:
-                    os.killpg(process.pid, signal.SIGTERM)
+            if process.poll() is None:
+                os.killpg(process.pid, signal.SIGTERM)
                 try:
                     process.wait(timeout=3)
                 except subprocess.TimeoutExpired:
                     os.killpg(process.pid, signal.SIGKILL)
                     process.wait()
-            for master in masters:
-                os.close(master)
+            os.close(master)

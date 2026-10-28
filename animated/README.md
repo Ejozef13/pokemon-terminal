@@ -1,62 +1,46 @@
-# Animated Venusaur player
+# Venusaur startup animation
 
-For automatic Fish/Bash startup, use [the startup installer](../README.md).
+The regular-terminal startup plays for 30 seconds, leaves a still frame beside
+fastfetch, and returns to the same shell. No split view or background process.
+See [the installation guide](../README.md) to enable it automatically.
 
-The foreground player below is also available separately. It does not install anything,
-change ~/.bashrc, or start a background process. Run it on demand and press Ctrl-C
-to return to the shell. It uses the alternate screen and restores cursor visibility
-on exit. Fastfetch is captured once at launch; neofetch is the fallback.
-
-Try the included colored text design with a gentle vertical bob:
+## Try without changing startup
 
 ```bash
-python3 animated/venusaur.py
+.venv/bin/python animated/venusaur.py /path/to/venusaur.gif --duration 30 --keep-frame
 ```
 
-For genuine idle poses, provide an animated GIF (requires Pillow):
+Press Ctrl-C to skip to the final still. Type `clear` after the prompt appears
+to remove it. Without `--keep-frame`, playback restores the previous screen
+without leaving artwork. The default duration is 30 seconds; an explicit
+`--duration 0` loops until Ctrl-C for manual playback only.
+
+The bundled old text art is also available as a bobbing demo:
 
 ```bash
-python3 -m venv .venv
-.venv/bin/python -m pip install -r requirements-image.txt
-.venv/bin/python animated/venusaur.py /path/to/venusaur.gif --width 40
+python3 animated/venusaur.py --duration 3 --keep-frame
 ```
 
-For literal ASCII rather than colored Unicode half-block pixels:
+## ASCII and colors
+
+For literal ASCII rendering:
 
 ```bash
-.venv/bin/python animated/venusaur.py /path/to/venusaur.gif --ascii --width 48
+.venv/bin/python animated/venusaur.py /path/to/venusaur.gif --ascii --width 48 --keep-frame
 ```
 
-A PNG/JPEG gets the same simulated bob as the bundled text art, not generated idle
-poses. GIF frame timings are respected subject to a maximum redraw rate of 8 FPS;
-adjust with --fps (1–30). Frames are converted once in memory. There is no image
-asset from the chat bundled here: the inline preview was not exposed as a file.
-Text input should be trusted terminal art containing printable characters and
-SGR colors, not arbitrary control sequences.
+Default rendering uses colored Unicode half blocks, keeping the sprite's pixel
+colors and transparent background. PNG/JPEG input gets a simulated bob; GIF input
+uses its actual frames and timing. The GIF from your desktop is not bundled here.
 
-To keep it moving while using your shell, run the command in a separate tmux pane.
-From the repository directory, for example:
+Frames are converted once in memory. Default redraw limit is 8 FPS; adjust with
+`--fps` (1–30). System information is captured once, with fastfetch preferred
+and neofetch as fallback. Playback needs no network access.
 
-```bash
-tmux split-window -h 'python3 animated/venusaur.py'
-```
+Use `--gap 8` to adjust spacing and `--quiet` to hide the skip hint. Text input
+must be trusted terminal art. Choose a small enough `--width` for your window;
+oversized content is clipped or replaced with a size warning.
 
-Use the virtualenv Python and GIF path in that command for a custom sprite.
-Install tmux separately if needed. The bundled art is around 99 columns wide;
-use a custom image with --width 32 for small panes. Narrow layouts stack system
-information below the art; content that exceeds pane height is clipped. True-color
-Unicode rendering needs a UTF-8 terminal. This player owns its pane while running;
-it deliberately does not draw over an active shell prompt.
-
-For a short startup-style preview without changing your existing startup:
-
-```bash
-python3 animated/venusaur.py --duration 3
-```
-
-## Display alignment
-
-System information is vertically centered alongside the sprite, and the combined
-block is centered within the pane. Use `--gap 8` to change the separation. Extra
-vertical pane space is balanced above and below the block. Use `--quiet` to hide
-the exit hint. Animation uses the alternate screen; Ctrl-C restores the terminal.
+During playback the player uses the alternate screen. When it ends, it restores
+the original screen and cursor, prints the last frame as ordinary terminal output
+if requested, and exits. No process remains to redraw over your commands.

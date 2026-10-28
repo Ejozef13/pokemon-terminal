@@ -86,7 +86,7 @@ def load_frames(path, width, ascii_only):
         return images, durations
 
 
-def layout(art, info, columns, height, offset, gap=6):
+def layout(art, info, columns, height, offset, gap=6, center_vertical=True):
     width = max((len(CSI.sub('', row)) for row in art), default=0)
     if width > columns - 1:
         art = ['Art too wide; reduce --width.'[:max(0, columns - 1)]]
@@ -108,24 +108,26 @@ def layout(art, info, columns, height, offset, gap=6):
             rows.append(' ' * margin + line + ' ' * (width - plain_width + gap) + right)
     else:
         rows = left + [''] + [line[:max(0, columns - 1)] for line in info]
-    # Center the display vertically when the pane has room.
-    padding = max(0, (height - 2 - len(rows)) // 2)
+    # The final still is compact so the prompt sits directly below it.
+    padding = max(0, (height - 2 - len(rows)) // 2) if center_vertical else 0
     return ([''] * padding + rows)[:max(0, height - 2)]
 
 
-def main():
+def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('image', nargs='?', type=Path,
                         help='GIF, PNG, JPEG, or terminal art; defaults to bundled art')
     parser.add_argument('--width', type=int, default=40)
     parser.add_argument('--gap', type=int, default=6, help='Columns between Venusaur and system info')
-    parser.add_argument('--quiet', action='store_true', help='Hide the exit hint in a startup pane')
+    parser.add_argument('--quiet', action='store_true', help='Hide the skip hint')
     parser.add_argument('--ascii', action='store_true', help='Plain ASCII image rendering')
     parser.add_argument('--fps', type=float, default=8,
                         help='Maximum redraw rate; GIF timing is preserved when slower')
-    parser.add_argument('--duration', type=float, default=0,
-                        help='Exit after this many seconds; zero loops until Ctrl-C')
-    args = parser.parse_args()
+    parser.add_argument('--duration', type=float, default=30,
+                        help='Animation seconds (default 30); zero loops until Ctrl-C')
+    parser.add_argument('--keep-frame', action='store_true',
+                        help='Leave the last frame and system info above the shell prompt')
+    args = parser.parse_args(argv)
     if not 1 <= args.width <= 160 or not math.isfinite(args.fps) or not 1 <= args.fps <= 30:
         parser.error('width must be 1–160 and fps must be 1–30')
     if not 1 <= args.gap <= 40:
@@ -133,7 +135,7 @@ def main():
     if not math.isfinite(args.duration) or args.duration < 0:
         parser.error('duration must be finite and nonnegative')
     if not sys.stdout.isatty() or os.environ.get('TERM') == 'dumb':
-        parser.error('Run in an interactive terminal or tmux pane')
+        parser.error('Run in an interactive terminal')
     try:
         frames, timings = load_frames(args.image, args.width, args.ascii)
         info = system_info()
@@ -141,12 +143,14 @@ def main():
         parser.exit(1, 'Image animation requires Pillow. Install requirements-image.txt.\n')
     except (OSError, ValueError) as error:
         parser.exit(1, f'Cannot load animation: {error}\n')
-    # Resize the image to the current pane with --width before launch. Rendering
-    # adapts layout to subsequent resizes without reconverting frames.
-    started, index = time.monotonic(), 0
+    # Frames are converted once; layout adapts to terminal resizes.
+    started, index, last_index, last_offset = time.monotonic(), 0, 0, 0
+    terminated = False
     previous_handler = signal.getsignal(signal.SIGTERM)
 
     def stop(signum, frame):
+        nonlocal terminated
+        terminated = True
         raise KeyboardInterrupt
 
     signal.signal(signal.SIGTERM, stop)
@@ -161,8 +165,9 @@ def main():
             offset = int((now - started) % 1.4 >= .7) if len(frames) == 1 else 0
             rows = layout(frames[index], info, columns, height, offset, args.gap)
             sys.stdout.write('\033[H\033[2J' + '\r\n'.join(rows) +
-                             ('' if args.quiet else '\r\n\033[0mCtrl-C to return to your shell'))
+                             ('' if args.quiet else '\r\n\033[0mCtrl-C to skip animation'))
             sys.stdout.flush()
+            last_index, last_offset = index, offset
             delay = max(1 / args.fps, timings[index])
             if args.duration:
                 delay = min(delay, max(0, args.duration - (time.monotonic() - started)))
@@ -171,9 +176,16 @@ def main():
     except KeyboardInterrupt:
         pass
     finally:
-        sys.stdout.write('\033[0m\033[?25h\033[?1049l')
-        sys.stdout.flush()
-        signal.signal(signal.SIGTERM, previous_handler)
+        try:
+            sys.stdout.write('\033[0m\033[?25h\033[?1049l')
+            if args.keep_frame and not terminated:
+                columns, height = shutil.get_terminal_size()
+                rows = layout(frames[last_index], info, columns, height, last_offset,
+                              args.gap, center_vertical=False)
+                sys.stdout.write('\r\n'.join(rows) + '\033[0m\r\n\r\n')
+            sys.stdout.flush()
+        finally:
+            signal.signal(signal.SIGTERM, previous_handler)
 
 
 if __name__ == '__main__':
