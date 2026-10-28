@@ -1,2 +1,2 @@
--r requirements-image.txt
+-r requirements.txt
 pyte>=0.8.2

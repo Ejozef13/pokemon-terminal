@@ -79,7 +79,8 @@ class StartupTests(unittest.TestCase):
         config = json.loads((self.base / 'config.json').read_text())
         self.assertEqual(config['duration'], 0)
         self.assertNotIn('height', config)
-        self.assertNotIn('previous split-view', (self.base / 'startup.py').read_text())
+        self.assertFalse((self.base / 'startup.py').exists())
+        self.assertTrue((self.base / 'render.py').is_file())
         self.assertIn('POKEMON_TERMINAL_SHOWN', hook.read_text())
         self.assertTrue(list((self.base / 'backups').glob(hook.name + '.*')))
 
@@ -115,6 +116,33 @@ class StartupTests(unittest.TestCase):
         self.assertFalse((retired / 'venusaur.txt').exists())
         self.assertFalse((self.base.parent / 'bashrc-pokemon.sh').exists())
         self.assertEqual((retired / 'custom.txt').read_text(), 'user-owned')
+
+    def test_reinstall_reuses_installed_gif_without_download_path(self):
+        result = self.install(self.gif)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        expected = self.gif.read_bytes()
+        self.gif.unlink()
+        result = self.install()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual((self.base / 'venusaur.gif').read_bytes(), expected)
+        self.assertFalse((self.base / 'startup.py').exists())
+        self.assertFalse((self.base / 'venusaur.py').exists())
+
+    def test_installed_runtime_is_independent_of_checkout(self):
+        result = self.install(self.gif)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        isolated = dict(self.env, PYTHONPATH='')
+        prepare = subprocess.run(
+            ['python3', str(self.base / 'prompt.py'), 'prepare', str(self.base), '140', '40'],
+            cwd=self.home, env=isolated, capture_output=True, text=True)
+        self.assertEqual(prepare.returncode, 0, prepare.stderr)
+        cache = Path(prepare.stdout.splitlines()[0])
+        self.assertTrue((cache / 'initial.ansi').is_file())
+        subprocess.run(['python3', str(self.base / 'prompt.py'), 'stop', str(cache)],
+                       env=isolated, check=True)
+        for unused in ('install.py', 'migration.py', 'startup.py', 'venusaur.py'):
+            self.assertFalse((self.base / unused).exists())
+        self.assertFalse((self.home / '.bashrc').exists())
 
     def test_bad_gif_does_not_change_startup(self):
         (self.home / '.bashrc').write_text('# keep exactly\n')

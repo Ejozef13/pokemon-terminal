@@ -12,7 +12,8 @@ import sys
 import tempfile
 import time
 
-from venusaur import layout, load_frames, system_info
+from render import layout, load_frames
+from dashboard import system_info
 from dashboard import visible_width
 
 MAGIC = 'pokemon-terminal-prompt-v1'
@@ -32,7 +33,7 @@ def prepare(base, columns, lines):
     width = min(config['width'], max(1, columns - config['gap'] - panel_width - 1))
     with Image.open(base / 'venusaur.gif') as image:
         width = min(width, max(1, math.floor(available * 2 * image.width / image.height)))
-    frames, durations = load_frames(base / 'venusaur.gif', width, False)
+    frames, durations = load_frames(base / 'venusaur.gif', width)
     rendered = [layout(frame, info, columns, available + 2, 0,
                        config['gap'], center_vertical=False) for frame in frames]
     rows = max(map(len, rendered))
