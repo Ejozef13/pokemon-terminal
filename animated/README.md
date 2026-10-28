@@ -51,7 +51,9 @@ There is no static-art fallback.
 
 ## Detection and cleanup
 
-The calendar uses CachyOS green. Basic Fastfetch data and temperature detection
+The compact dashboard uses only CachyOS green and blue. Raw sensor channels are
+kept in diagnostics; CPU/GPU temperatures appear inline when identified. Repeated
+Btrfs subvolumes share a single filesystem row. Basic Fastfetch data and temperature detection
 are separate queries, and read-only local Linux probes fill missing fields.
 Use `python3 animated/dashboard.py --diagnose` to inspect real detection failures.
 Sensors are labelled by chip/card, and no privileged command runs at startup.

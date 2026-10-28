@@ -167,7 +167,7 @@ class StartupTests(unittest.TestCase):
             'source "$XDG_CONFIG_HOME/fish/conf.d/pokemon-terminal-animated.fish"; '
             'printf "OLD_GREETING_ART\\n"; '
             'function _test_record --on-signal USR2; '
-            'commandline > "$HOME/buffer"; '
+            'commandline > "$HOME/buffer.next"; command mv "$HOME/buffer.next" "$HOME/buffer"; '
             'printf "%s" "$_pokemon_active" > "$HOME/active"; '
             'printf "%s" "$_pokemon_cache" > "$HOME/cache"; end'
         )
@@ -208,7 +208,9 @@ class StartupTests(unittest.TestCase):
                         break
                 if predicate(bytes(output)):
                     return
-            self.fail('Terminal did not reach expected state: ' + repr(bytes(output[-1500:])))
+            self.fail('Terminal did not reach expected state: ' + repr(bytes(output[-500:]))
+                      + ' active=' + ((self.home / 'active').read_text() if (self.home / 'active').exists() else '?')
+                      + ' buffer=' + ((self.home / 'buffer').read_text() if (self.home / 'buffer').exists() else '?'))
 
         try:
             read_until(lambda data: b'LivePromptTest' in data and b'> ' in data)
@@ -217,6 +219,7 @@ class StartupTests(unittest.TestCase):
             self.assertNotIn(b'OLD_GREETING_ART', output.split(b'\x1b[2J')[-1])
             self.assertNotIn(b'\x1b[?1049h', output)
             read_until(lambda data: data.count(b'\x1b8') >= 2)
+            self.assertEqual(output.count(b'LivePromptTest'), 1)
             os.write(master, b'echo USER_TYPED_OK')
             saves = output.count(b'\x1b8')
             read_until(lambda data: data.count(b'\x1b8') >= saves + 2)
@@ -235,20 +238,30 @@ class StartupTests(unittest.TestCase):
                 fcntl.ioctl(master, termios.TIOCSWINSZ, struct.pack('HHHH', 42, 145, 0, 0))
                 os.kill(process.pid, signal.SIGWINCH)
             if expiry or resize:
+                last_observation = [0.0]
                 def inactive(data):
-                    os.kill(process.pid, signal.SIGUSR2)
+                    if time.monotonic() - last_observation[0] >= .1:
+                        os.kill(process.pid, signal.SIGUSR2)
+                        last_observation[0] = time.monotonic()
                     active = self.home / 'active'
-                    return active.exists() and active.read_text() == '0'
+                    return (active.exists() and active.read_text() == '0'
+                            and (self.home / 'cache').exists()
+                            and not Path((self.home / 'cache').read_text()).exists())
                 read_until(inactive)
                 cache = Path((self.home / 'cache').read_text())
                 self.assertFalse(cache.exists())
             if cancel_key:
+                last_observation = [0.0]
                 os.write(master, b'\x03')
                 def cancelled(data):
-                    os.kill(process.pid, signal.SIGUSR2)
+                    if time.monotonic() - last_observation[0] >= .1:
+                        os.kill(process.pid, signal.SIGUSR2)
+                        last_observation[0] = time.monotonic()
                     active = self.home / 'active'
                     buffer = self.home / 'buffer'
-                    return active.exists() and active.read_text() == '0' and not buffer.read_text().strip()
+                    return (active.exists() and active.read_text() == '0'
+                            and (self.home / 'cache').exists()
+                            and not Path((self.home / 'cache').read_text()).exists()) and not buffer.read_text().strip()
                 read_until(cancelled)
                 os.write(master, b'echo USER_TYPED_OK')
             if clear_key:

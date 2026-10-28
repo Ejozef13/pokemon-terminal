@@ -15,9 +15,9 @@ import hardware
 
 CSI = re.compile(r'\x1b\[[0-?]*[ -/]*[@-~]')
 RESET = '\033[0m'
-TEAL, CYAN, BLUE = '#00cbb8', '#00cfff', '#5b9dff'
-CACHY_GREEN = '#00e6a0'
-WHITE, GREEN = '#d8e8ee', '#9bd65d'
+CACHY_GREEN, BLUE = '#00e6a0', '#5b9dff'
+TEAL = GREEN = WHITE = CACHY_GREEN
+CYAN = BLUE
 MODULES = ('CPU', 'GPU', 'Memory', 'Disk', 'Display', 'Host', 'OS', 'Kernel',
            'Uptime', 'Packages', 'DE', 'WM', 'Shell', 'Terminal')
 ALLOWED_MODULES = {name.upper() for name in MODULES}
@@ -180,6 +180,7 @@ def collect():
                          if item.get('name') == gpu.get('name') and item.get('temperature') is not None), None)
         if measured:
             gpu['temperature'] = measured['temperature']
+    data['disk'] = hardware.refresh_disk_usage(data.get('disk', []))
     data = hardware.enrich(data)
     data['diagnostics'] = {'fastfetch': executable or 'not found', 'errors': errors,
                            'modules': sorted(primary),
@@ -207,6 +208,26 @@ def named(data):
     return ' '.join(clean(data.get(key, '')) for key in ('prettyName', 'version')).strip() or clean(data.get('name', 'Unavailable'))
 
 
+def compact_disks(disks):
+    """Show each backing filesystem once, preferring its shortest mount path."""
+    selected, seen = [], set()
+    for disk in sorted(disks, key=lambda item: (item.get('mountpoint') != '/', len(item.get('mountpoint', '')))):
+        mount = disk.get('mountpoint', '')
+        source = disk.get('mountFrom', '')
+        # Btrfs subvolume suffixes are not separate storage devices.
+        identity = re.sub(r'\[.*\]$', '', source) if source else ''
+        if not identity:
+            try:
+                identity = ('device', os.stat(mount).st_dev)
+            except OSError:
+                identity = ('mount', mount)
+        if identity in seen:
+            continue
+        seen.add(identity)
+        selected.append(disk)
+    return selected
+
+
 def sections(data, now):
     cpu = data.get('cpu', {})
     cpu_text = clean(cpu.get('cpu', 'Unavailable'))
@@ -227,11 +248,8 @@ def sections(data, now):
         if gpu.get('type') and gpu['type'] != 'Unknown':
             text += ' [' + clean(gpu['type']) + ']'
         hardware.append(('GPU', text))
-    for sensor in data.get('sensors', []):
-        label = ' '.join(filter(None, (sensor['chip'], sensor.get('device'), sensor['label'])))
-        hardware.append(('Sensor', clean(label) + ' ' + temperature(sensor['temperature'])))
     hardware.append(('RAM', usage(data.get('memory', {}))))
-    for disk in data.get('disk') or [{}]:
+    for disk in compact_disks(data.get('disk', [])) or [{}]:
         hardware.append(('ROM ' + clean(disk.get('mountpoint', '')),
                          usage(disk.get('bytes', {}))))
     for display in data.get('display') or [{}]:
@@ -299,7 +317,7 @@ def dashboard(data, width=76, now=None):
     width = max(32, width)
     inside = width - 2
     label_width = 14
-    value_width = inside - label_width - 4
+    value_width = inside - label_width - 5
     rows = []
     for index, (title, accent, entries) in enumerate(sections(data, now)):
         middle = ' ' + title + ' '
@@ -307,16 +325,21 @@ def dashboard(data, width=76, now=None):
         border = ('┌' if index == 0 else '├') + '─' * (remaining // 2) + middle + '─' * (remaining - remaining // 2) + ('┐' if index == 0 else '┤')
         rows.append(color(border, accent))
         for label, value in entries:
+            icons = {'CPU': '▣', 'GPU': '▧', 'RAM': '▤', 'Display': '▭',
+                     'Host': '◆', 'Distribution': '◈', 'Kernel': '⚙', 'Uptime': '◷',
+                     'Packages': '▦', 'Desktop': '▱', 'Window-Manager': '▧',
+                     'Shell': '›', 'Terminal': '▣', 'Date': '◷', 'Days': '▦'}
+            icon = '▰' if label.startswith('ROM') else icons.get(label, '▦')
             label = clip(clean(label), label_width)
             value = clip(str(value), value_width)
-            line = (color('│ ', accent) + color(label, accent)
+            line = (color('│' + icon + ' ', accent) + color(label, accent)
                     + ' ' * (label_width - visible_width(label)) + color(' → ', CYAN)
                     + color(value, WHITE) + ' ' * (value_width - visible_width(value))
-                    + color('│', accent))
+                    + ' ')
             rows.append(line)
     rows.append(color('└' + '─' * inside + '┘', TEAL))
     rows.append(' ' + ' '.join(color('●', shade) for shade in
-                              (WHITE, TEAL, CYAN, BLUE, CACHY_GREEN, GREEN, '#f3c969', '#ed6a73')))
+                              (CACHY_GREEN, BLUE) * 4))
     return rows
 
 

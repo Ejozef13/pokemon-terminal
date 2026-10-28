@@ -147,14 +147,56 @@ def extra_info(sys=Path('/sys'), proc=Path('/proc')):
     return result
 
 
-def enrich(data):
+def gpu_name_matches(name, pci_name):
+    def words(value):
+        value = re.sub(r'\b(?:amd|ati|nvidia|inc|corporation)\b', '', value.lower())
+        return re.findall(r'[a-z]+|[0-9]+', value)
+    left, right = words(name), words(pci_name)
+    if not left or not right:
+        return False
+    if ''.join(left) in ''.join(right) or ''.join(right) in ''.join(left):
+        return True
+    # PCI descriptions can list both RX 9070 / 9070 XT variants.
+    return any(token.isdigit() and len(token) >= 3 for token in left) and set(left) <= set(right)
+
+
+def enrich(data, sys=Path('/sys')):
     readings = sensors()
     cpu = data.setdefault('cpu', {})
     cpu_sensor = next((item for item in readings if item['chip'] in ('k10temp', 'zenpower', 'coretemp')
                        and item['label'] in ('Tctl', 'Tdie', 'Package id 0')), None)
     if cpu_sensor and (not isinstance(cpu.get('temperature'), (int, float)) or not math.isfinite(cpu['temperature'])):
         cpu['temperature'] = cpu_sensor['temperature']
-    # Other readings are explicitly labelled by chip/card rather than guessed.
+    # Use PCI identity/name matching, then a unique one-to-one remainder.
+    # Never assume that Fastfetch order equals DRM card numbering.
+    inventory = pci_gpus()
+    cards = {}
+    for sensor in readings:
+        if sensor['chip'] == 'amdgpu' and sensor.get('device') and sensor['label'] == 'edge':
+            address = (sys / 'class/drm' / sensor['device'] / 'device').resolve().name
+            name = next((gpu['name'] for gpu in inventory if gpu.get('pciAddress') == address), '')
+            cards[sensor['device']] = {'name': name, 'temperature': sensor['temperature']}
+    gpus = data.get('gpu', [])
+    matched_cards, matched_gpu = set(), set()
+    for index, gpu in enumerate(gpus):
+        name = gpu.get('name', '')
+        candidates = [card for card, value in cards.items()
+                      if card not in matched_cards and name and
+                      gpu_name_matches(name, value['name'])
+                      and value['name']]
+        if len(candidates) == 1:
+            card = candidates[0]
+            if not isinstance(gpu.get('temperature'), (int, float)) or not math.isfinite(gpu['temperature']):
+                gpu['temperature'] = cards[card]['temperature']
+            matched_cards.add(card)
+            matched_gpu.add(index)
+    remaining_cards = set(cards) - matched_cards
+    remaining_gpu = set(range(len(gpus))) - matched_gpu
+    if len(gpus) == len(inventory) == len(cards) and len(remaining_cards) == len(remaining_gpu) == 1:
+        gpu = gpus[remaining_gpu.pop()]
+        if not isinstance(gpu.get('temperature'), (int, float)):
+            gpu['temperature'] = cards[remaining_cards.pop()]['temperature']
+    # Raw readings stay available to --diagnose, not the compact dashboard.
     data['sensors'] = [item for item in readings if item is not cpu_sensor]
     return data
 
@@ -170,3 +212,20 @@ def sensor_access(sys=Path('/sys')):
     return {'readable_temperature_files': files, 'read_errors': denied,
             'loaded_sensor_drivers': [name for name in ('k10temp', 'coretemp', 'amdgpu', 'nvidia')
                                       if (sys / 'module' / name).exists()]}
+
+
+
+def refresh_disk_usage(disks):
+    for disk in disks:
+        mount = disk.get('mountpoint', '')
+        filesystem = disk.get('filesystem', '').lower()
+        if not mount.startswith('/') or filesystem in ('nfs', 'nfs4', 'cifs', 'smbfs', 'fuse.sshfs'):
+            continue
+        try:
+            usage = shutil.disk_usage(mount)
+        except OSError:
+            continue
+        values = dict(disk.get('bytes', {}))
+        values.update(total=usage.total, used=usage.used, free=usage.free)
+        disk['bytes'] = values
+    return disks

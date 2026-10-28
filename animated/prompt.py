@@ -13,6 +13,7 @@ import tempfile
 import time
 
 from venusaur import layout, load_frames, system_info
+from dashboard import visible_width
 
 MAGIC = 'pokemon-terminal-prompt-v1'
 
@@ -42,6 +43,19 @@ def prepare(base, columns, lines):
             payload = ''.join(f'\033[{row + 1};1H\033[2K' +
                               (frame[row] if row < len(frame) else '')
                               for row in range(rows)) + '\033[0m'
+            if index == 0:
+                (cache / 'initial.ansi').write_text(payload)
+            sprite_width = max(visible_width(line) for line in frames[index])
+            if columns >= sprite_width + config['gap'] + 30:
+                info_width = min(max(visible_width(line) for line in info),
+                                 columns - sprite_width - config['gap'] - 1)
+                margin = max(0, (columns - 1 - sprite_width - config['gap'] - info_width) // 2)
+                top = max(0, (max(len(frames[index]), len(info)) - len(frames[index])) // 2)
+                # Static system information is drawn once. Each tick only
+                # replaces sprite cells, reducing writes and text flicker.
+                payload = ''.join(f'\033[{top + row + 1};{margin + 1}H' + line
+                                  + ' ' * (sprite_width - visible_width(line))
+                                  for row, line in enumerate(frames[index])) + '\033[0m'
             (cache / f'{index}.ansi').write_text(payload)
         metadata = dict(magic=MAGIC, rows=rows, durations=durations,
                         fps=config['fps'], duration=config.get('duration', 0))

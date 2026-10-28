@@ -40,11 +40,12 @@ prompt (3 seconds when Fish has no idle timeout). The nonblocking integration de
 - `--gap`: columns between sprite and fastfetch, 1–40 (default 8).
 - `--fps`: maximum redraw rate, 1–30 (default 8).
 
-The reference-inspired dashboard has three boxed sections, arrows, usage meters,
+The compact reference-inspired dashboard uses only CachyOS green and blue,
+with small icons, thin section rules, arrows, usage meters,
 a current-month calendar, a highlighted current day, and palette dots:
 
-- **Hardware** in CachyOS teal: CPU, GPUs, temperatures when supported, RAM,
-  mounted disks, and display resolution/scaling/refresh rate.
+- **Hardware** in CachyOS green: CPU, GPUs, temperatures when supported, RAM,
+  one row per backing filesystem, and display resolution/scaling/refresh rate.
 - **System & Software** in blue: host, distribution, kernel, uptime, packages,
   desktop, window manager, Fish version, and terminal version.
 - **Date & Calendar** in CachyOS green: local date/time, ISO week, weekdays, and month.
@@ -117,15 +118,18 @@ other hardware data. The app also reads CPU information, motherboard identity,
 AMD/Intel/NVMe kernel temperature files, local PCI GPU names, pacman package
 counts, desktop/session information, and KDE display data where available.
 
-CPU package temperature is displayed with CPU information. Other readable sensor
-values are labelled by chip/card and sensor name (for example GPU junction or
-NVMe composite). Missing or disconnected sensors are not invented. Values are a
+CPU/GPU temperatures are shown inline with their hardware names when they can
+be identified reliably. Raw motherboard, NVMe, and other sensor channels remain
+available through diagnostics and do not create extra rows in the dashboard.
+Btrfs subvolumes on the same backing filesystem are combined into one disk row.
+Disk usage is read from the mounted filesystem rather than displaying missing
+Fastfetch usage values as zero. Missing or disconnected sensors are not invented. Values are a
 startup snapshot, not a continuously refreshed hardware monitor.
 
 If anything still says Unavailable, run the diagnostic command on **your PC**:
 
 ```fish
-.venv/bin/python animated/dashboard.py --diagnose
+/home/ejmr/pokemon-terminal/pokemon-terminal/.venv/bin/python /home/ejmr/pokemon-terminal/pokemon-terminal/animated/dashboard.py --diagnose
 ```
 
 It reports Fastfetch errors, detected modules, readable temperature files, driver

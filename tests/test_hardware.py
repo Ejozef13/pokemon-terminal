@@ -65,3 +65,31 @@ class HardwareTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             self.assertEqual(hardware.sensors(Path(directory)), [])
             self.assertEqual(hardware.cpu_info(Path(directory), Path(directory)), {})
+
+    def test_gpu_edge_temperatures_match_pci_identity_not_card_order(self):
+        with tempfile.TemporaryDirectory() as directory:
+            sys = Path(directory)
+            for card, address in [('card1', '0000:03:00.0'), ('card0', '0000:13:00.0')]:
+                target = sys / 'devices' / address
+                target.mkdir(parents=True)
+                node = sys / 'class/drm' / card
+                node.mkdir(parents=True)
+                (node / 'device').symlink_to(target, target_is_directory=True)
+            readings = [{'chip': 'amdgpu', 'device': 'card0', 'label': 'edge', 'temperature': 41},
+                        {'chip': 'amdgpu', 'device': 'card1', 'label': 'edge', 'temperature': 36}]
+            inventory = [{'name': 'Navi 48 [Radeon RX 9070/9070 XT]', 'pciAddress': '0000:03:00.0'},
+                         {'name': 'Raphael [Radeon Graphics]', 'pciAddress': '0000:13:00.0'}]
+            data = {'gpu': [{'name': 'AMD Radeon RX 9070 XT'}, {'name': 'Radeon 610M'}]}
+            with patch.object(hardware, 'sensors', return_value=readings), \
+                 patch.object(hardware, 'pci_gpus', return_value=inventory):
+                result = hardware.enrich(data, sys)
+            self.assertEqual(result['gpu'][0]['temperature'], 36)
+            self.assertEqual(result['gpu'][1]['temperature'], 41)
+
+    def test_disk_usage_uses_local_filesystem_numbers(self):
+        from collections import namedtuple
+        Usage = namedtuple('Usage', 'total used free')
+        disks = [{'mountpoint': '/', 'bytes': {'total': 1000, 'used': 0}}]
+        with patch.object(hardware.shutil, 'disk_usage', return_value=Usage(1000, 160, 840)):
+            updated = hardware.refresh_disk_usage(disks)
+        self.assertEqual(updated[0]['bytes']['used'], 160)

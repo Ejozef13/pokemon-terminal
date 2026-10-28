@@ -76,7 +76,7 @@ class DashboardTests(unittest.TestCase):
             self.assertEqual(collected['memory']['used'], 25)
             self.assertEqual(collected['kernel']['release'], '6.18.1')
             self.assertNotIn('localip', collected)
-        args = next(call.args[0] for call in run.call_args_list if '--cpu-temp' not in call.args[0])
+        args = next(call.args[0] for call in run.call_args_list if '--structure' in call.args[0] and '--cpu-temp' not in call.args[0])
         self.assertEqual(args[args.index('--config') + 1], 'none')
         requested = args[args.index('--structure') + 1].lower().split(':')
         self.assertNotIn('localip', requested)
@@ -134,3 +134,26 @@ class DashboardTests(unittest.TestCase):
         self.assertEqual(data['packages']['all'], 1933)
         self.assertEqual(data['de']['prettyName'], 'KDE Plasma')
         self.assertIn('Unsupported argument', str(data['diagnostics']['errors']))
+
+    def test_compact_reference_layout_omits_raw_sensors_and_duplicate_subvolumes(self):
+        data = self.sample()
+        data['sensors'] = [{'chip': 'gigabyte_wmi', 'label': f'temp{i}', 'temperature': 40}
+                           for i in range(20)]
+        data['disk'] = [{'mountpoint': mount, 'mountFrom': '/dev/nvme0n1p2[' + mount + ']',
+                         'bytes': {'total': 500 * 1024**3, 'used': 75 * 1024**3}}
+                        for mount in ('/', '/home', '/root', '/srv', '/var/log', '/var/cache')]
+        data['disk'].append({'mountpoint': '/mnt/games', 'mountFrom': '/dev/nvme1n1p1',
+                             'bytes': {'total': 2 * 1024**4, 'used': 1024**4}})
+        rows = dashboard.dashboard(data, 76, datetime(2026, 10, 28))
+        text = dashboard.CSI.sub('', '\n'.join(rows))
+        self.assertNotIn('Sensor', text)
+        self.assertNotIn('gigabyte_wmi', text)
+        self.assertNotIn('/var/log', text)
+        self.assertNotIn('/home', text)
+        self.assertEqual(len(dashboard.compact_disks(data['disk'])), 2)
+        self.assertIn('SYSTEM & SOFTWARE', text)
+        self.assertIn('DATE & CALENDAR', text)
+        self.assertLessEqual(len(rows), 30)
+        escapes = dashboard.CSI.findall('\n'.join(rows))
+        rgb = {escape for escape in escapes if escape.startswith('\x1b[38;2;')}
+        self.assertEqual(rgb, {'\x1b[38;2;0;230;160m', '\x1b[38;2;91;157;255m'})
