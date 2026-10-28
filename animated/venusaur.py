@@ -7,27 +7,13 @@ from pathlib import Path
 import re
 import shutil
 import signal
-import subprocess
 import sys
 import time
 
 CSI = re.compile(r'\x1b\[[0-?]*[ -/]*[@-~]')
 ROOT = Path(__file__).resolve().parents[1]
 
-
-def system_info():
-    for name, args in [('fastfetch', ['--logo', 'none']),
-                       ('neofetch', ['--stdout'])]:
-        executable = shutil.which(name)
-        if executable:
-            try:
-                result = subprocess.run([executable, *args], capture_output=True,
-                                        text=True, timeout=5, check=True)
-                # Keep the display inside our drawing area.
-                return CSI.sub('', result.stdout).splitlines()
-            except (subprocess.SubprocessError, OSError):
-                continue
-    return ['Venusaur Terminal', 'Install fastfetch for system information.']
+from dashboard import clip, system_info, visible_width
 
 
 def render(image, ascii_only):
@@ -87,7 +73,7 @@ def load_frames(path, width, ascii_only):
 
 
 def layout(art, info, columns, height, offset, gap=6, center_vertical=True):
-    width = max((len(CSI.sub('', row)) for row in art), default=0)
+    width = max((visible_width(row) for row in art), default=0)
     if width > columns - 1:
         art = ['Art too wide; reduce --width.'[:max(0, columns - 1)]]
         width = len(art[0])
@@ -96,18 +82,20 @@ def layout(art, info, columns, height, offset, gap=6, center_vertical=True):
         count = max(len(left), len(info))
         # Keep info vertically centered against the whole sprite.
         info_top = max(0, (count - len(info)) // 2)
-        info_width = min(max((len(row) for row in info), default=0),
+        info_width = min(max((visible_width(row) for row in info), default=0),
                          max(0, columns - width - gap - 1))
         margin = max(0, (columns - 1 - width - gap - info_width) // 2)
+        art_top = max(0, (count - len(left)) // 2)
         rows = []
         for i in range(count):
-            line = left[i] if i < len(left) else ''
-            plain_width = len(CSI.sub('', line))
+            art_index = i - art_top
+            line = left[art_index] if 0 <= art_index < len(left) else ''
+            plain_width = visible_width(line)
             j = i - info_top
-            right = info[j][:max(0, columns - width - gap - 1)] if 0 <= j < len(info) else ''
+            right = clip(info[j], max(0, columns - width - gap - 1)) if 0 <= j < len(info) else ''
             rows.append(' ' * margin + line + ' ' * (width - plain_width + gap) + right)
     else:
-        rows = left + [''] + [line[:max(0, columns - 1)] for line in info]
+        rows = left + [''] + [clip(line, max(0, columns - 1)) for line in info]
     # The final still is compact so the prompt sits directly below it.
     padding = max(0, (height - 2 - len(rows)) // 2) if center_vertical else 0
     return ([''] * padding + rows)[:max(0, height - 2)]

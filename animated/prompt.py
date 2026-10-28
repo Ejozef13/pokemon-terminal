@@ -22,9 +22,13 @@ def prepare(base, columns, lines):
         return None
     from PIL import Image
     config = json.loads((base / 'config.json').read_text())
-    info = system_info()
+    panel_width = min(76, max(32, columns - config['gap'] - min(config['width'], 32) - 1))
+    info = system_info(panel_width)
     available = lines - 8
-    width = min(config['width'], max(8, columns - config['gap'] - 31))
+    if len(info) > available:
+        from dashboard import color, CYAN
+        info = info[:available - 1] + [color('Enlarge the terminal for the full calendar.', CYAN)]
+    width = min(config['width'], max(1, columns - config['gap'] - panel_width - 1))
     with Image.open(base / 'venusaur.gif') as image:
         width = min(width, max(1, math.floor(available * 2 * image.width / image.height)))
     frames, durations = load_frames(base / 'venusaur.gif', width, False)
@@ -40,7 +44,7 @@ def prepare(base, columns, lines):
                               for row in range(rows)) + '\033[0m'
             (cache / f'{index}.ansi').write_text(payload)
         metadata = dict(magic=MAGIC, rows=rows, durations=durations,
-                        fps=config['fps'], duration=config.get('duration', 30))
+                        fps=config['fps'], duration=config.get('duration', 0))
         (cache / 'meta.json').write_text(json.dumps(metadata))
         (cache / 'index').write_text('0\n')
     except BaseException:
@@ -74,7 +78,7 @@ def tick(cache, pid, identity):
     try:
         while cache.exists() and process_identity(pid) == identity:
             now = time.monotonic()
-            if now - start >= data['duration']:
+            if data['duration'] > 0 and now - start >= data['duration']:
                 # Tell Fish to clean up, leaving the last drawn frame untouched.
                 next_index = -1
             elif now < deadline:

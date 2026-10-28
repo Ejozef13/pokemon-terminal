@@ -75,10 +75,10 @@ def main():
     parser.add_argument('--width', type=int, default=48)
     parser.add_argument('--gap', type=int, default=8)
     parser.add_argument('--fps', type=int, default=8)
-    parser.add_argument('--duration', type=float, default=30, help='Startup animation seconds; Ctrl-C skips early')
+    parser.add_argument('--duration', type=float, default=0, help='Maximum idle animation seconds; 0 means no timeout')
     args = parser.parse_args()
-    if not 8 <= args.width <= 120 or not 1 <= args.gap <= 40 or not 1 <= args.fps <= 30 or not math.isfinite(args.duration) or not 0 < args.duration <= 300:
-        parser.error('width: 8–120, gap: 1–40, fps: 1–30, duration: greater than 0 and at most 300')
+    if not 8 <= args.width <= 120 or not 1 <= args.gap <= 40 or not 1 <= args.fps <= 30 or not math.isfinite(args.duration) or not 0 <= args.duration <= 300:
+        parser.error('width: 8–120, gap: 1–40, fps: 1–30, duration: 0 (indefinite) to 300')
     config_home = Path(os.environ.get('XDG_CONFIG_HOME', Path.home() / '.config'))
     base = config_home / 'pokemon-terminal/animated'
     backups = base / 'backups'
@@ -128,6 +128,7 @@ def main():
     shutil.copy2(ROOT / 'animated/venusaur.py', base / 'venusaur.py')
     shutil.copy2(ROOT / 'animated/startup.py', base / 'startup.py')
     shutil.copy2(ROOT / 'animated/prompt.py', base / 'prompt.py')
+    shutil.copy2(ROOT / 'animated/dashboard.py', base / 'dashboard.py')
     shutil.copy2(ROOT / 'animated/fish-prompt.fish', base / 'fish-prompt.fish')
     destination = base / 'venusaur.gif'
     if args.gif.resolve() != destination.resolve():
@@ -177,7 +178,8 @@ end
 """
     write_config(fish_hook, fish, backups)
     (base / 'enabled').touch()
-    print(f'Fish: prompt available during animation (up to {args.duration:g}s); first command freezes it.')
+    limit = f'up to {args.duration:g}s' if args.duration else 'no idle timeout'
+    print(f'Fish: prompt available during animation ({limit}); first command freezes it.')
     print('Bash: timed foreground playback remains available; idle-prompt animation requires Fish.')
     print('Open a NEW terminal. Use clear or Ctrl-L for a clean workspace.')
     print('Original files retained; matching startup lines backed up and disabled.')

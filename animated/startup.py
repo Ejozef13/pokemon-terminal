@@ -18,7 +18,7 @@ def main():
         config = json.loads((base / 'config.json').read_text())
         play([str(base / 'venusaur.gif'), '--width', str(config['width']),
               '--gap', str(config['gap']), '--fps', str(config['fps']),
-              '--duration', str(config.get('duration', 30)), '--keep-frame', '--quiet'])
+              '--duration', str(config.get('duration', 0) or 3), '--keep-frame', '--quiet'])
     except (SystemExit, KeyboardInterrupt):
         # Player errors already explain themselves; startup must not close the shell.
         return

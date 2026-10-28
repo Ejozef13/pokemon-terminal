@@ -53,6 +53,7 @@ function _pokemon_prompt_first --on-event fish_prompt
         return
     end
     set -g _pokemon_started 1
+    set -lx POKEMON_SHELL_VERSION "$version"
     set -l prepared ("$_pokemon_python" "$_pokemon_base/prompt.py" prepare "$_pokemon_base" "$COLUMNS" "$LINES")
     if test (count $prepared) != 2
         return

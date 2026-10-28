@@ -4,6 +4,7 @@ import pyte
 import os
 from pathlib import Path
 import shutil
+import shlex
 import subprocess
 import tempfile
 import unittest
@@ -74,7 +75,7 @@ class StartupTests(unittest.TestCase):
         result = self.install(self.gif)
         self.assertEqual(result.returncode, 0, result.stderr)
         config = json.loads((self.base / 'config.json').read_text())
-        self.assertEqual(config['duration'], 30)
+        self.assertEqual(config['duration'], 0)
         self.assertNotIn('height', config)
         self.assertNotIn('previous split-view', (self.base / 'startup.py').read_text())
         self.assertIn('POKEMON_TERMINAL_SHOWN', hook.read_text())
@@ -139,12 +140,13 @@ class StartupTests(unittest.TestCase):
 
         fish = shutil.which('fish')
         fetch = self.tools / 'fastfetch'
-        fetch.write_text('#!/bin/sh\nprintf "OS: LivePromptTest\\n"\n')
+        payload = json.dumps([{'type': 'OS', 'result': {'prettyName': 'LivePromptTest'}}])
+        fetch.write_text('#!/bin/sh\nprintf \'%s\\n\' ' + shlex.quote(payload) + '\n')
         fetch.chmod(0o755)
         self.env.update(TERM='xterm-256color', COLUMNS='140', LINES='40')
         self.env.pop('POKEMON_TERMINAL_SHOWN', None)
         self.env.pop('SSH_CONNECTION', None)
-        result = self.install(self.gif, '--duration', '1.5' if expiry else '30')
+        result = self.install(self.gif, '--duration', '1.5' if expiry else '0')
         self.assertEqual(result.returncode, 0, result.stderr)
         hook = (
             'bind \\r execute; bind \\n execute; '
@@ -195,7 +197,7 @@ class StartupTests(unittest.TestCase):
             self.fail('Terminal did not reach expected state: ' + repr(bytes(output[-1500:])))
 
         try:
-            read_until(lambda data: b'OS: LivePromptTest' in data and b'> ' in data)
+            read_until(lambda data: b'LivePromptTest' in data and b'> ' in data)
             self.assertLess(time.monotonic() - started, 5)
             # The greeting is gone from the visible display before the prompt.
             self.assertNotIn(b'OLD_GREETING_ART', output.split(b'\x1b[2J')[-1])

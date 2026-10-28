@@ -1,9 +1,8 @@
 # Pokemon Terminal
 
 Animated Venusaur beside centered fastfetch, with a **working Fish prompt
-immediately below it**. Type while Venusaur moves. Running your first command
-freezes the sprite before command output begins. After at most 30 seconds it
-also freezes automatically. Use `clear` or Ctrl-L for a clean workspace.
+immediately below it**. Type while Venusaur moves. There is **no idle timeout**: it keeps moving while you stay at the initial
+prompt. Running your first command freezes the sprite before command output begins. Use `clear` or Ctrl-L for a clean workspace.
 
 One regular terminal, no split view, and no 30-second typing delay.
 
@@ -13,7 +12,7 @@ One regular terminal, no split view, and no 30-second typing delay.
 cd /home/ejmr/pokemon-terminal/pokemon-terminal
 git pull --ff-only origin main
 .venv/bin/python -m pip install -r requirements-image.txt
-.venv/bin/python animated/install.py /home/ejmr/Downloads/pokemon-venusaur.gif --duration 30
+.venv/bin/python animated/install.py /home/ejmr/Downloads/pokemon-venusaur.gif --duration 0
 ```
 
 Open a **new Konsole window**. The installer replaces the previous blocking Fish
@@ -22,25 +21,43 @@ download later is fine. Keep the checkout's virtualenv; startup uses its Python.
 
 The live prompt integration requires **Fish on Linux**. Python 3, Pillow, and a
 UTF-8 terminal with ANSI true-color support are also needed. Install fastfetch
-separately for system information; neofetch is the fallback. Frame conversion and
-system information capture happen once before the first prompt.
+separately for complete system information. Frame conversion and
+system information capture happen once before the first prompt. Fastfetch 2.40+
+is recommended for the structured dashboard. Without it, available local Python
+statistics are shown and unsupported fields say Unavailable.
 
-Bash still has the older foreground animation, which waits before returning a
-prompt. The nonblocking integration described here is for Fish.
+Bash still has the foreground fallback, which waits before returning a
+prompt (3 seconds when Fish has no idle timeout). The nonblocking integration described here is for Fish.
 
 ## Timing and layout
 
 ```fish
-.venv/bin/python animated/install.py /home/ejmr/Downloads/pokemon-venusaur.gif --duration 30 --width 48 --gap 8 --fps 8
+.venv/bin/python animated/install.py /home/ejmr/Downloads/pokemon-venusaur.gif --duration 0 --width 48 --gap 8 --fps 8
 ```
 
-- `--duration`: maximum idle animation seconds, greater than 0 and at most 300 (default 30).
+- `--duration`: 0 for indefinite idle animation (default), or a timeout up to 300 seconds.
 - `--width`: preferred sprite width, 8–120 (default 48).
 - `--gap`: columns between sprite and fastfetch, 1–40 (default 8).
 - `--fps`: maximum redraw rate, 1–30 (default 8).
 
-Fastfetch is centered vertically beside Venusaur. The combined display is centered
-horizontally, and the image is reduced when necessary to leave room for typing.
+The reference-inspired dashboard has three boxed sections, arrows, usage meters,
+a current-month calendar, a highlighted current day, and palette dots:
+
+- **Hardware** in CachyOS teal: CPU, GPUs, temperatures when supported, RAM,
+  mounted disks, and display resolution/scaling/refresh rate.
+- **System & Software** in blue: host, distribution, kernel, uptime, packages,
+  desktop, window manager, Fish version, and terminal version.
+- **Date & Calendar** in purple/cyan: local date/time, ISO week, weekdays, and month.
+
+Network modules are never requested or rendered. Fastfetch runs with an explicit
+local module list and without loading your global configuration. Your global
+Fastfetch config is left unchanged. Statistics are captured once at startup; the
+calendar/time reflect when the terminal opened, rather than updating live.
+
+The combined sprite and dashboard are centered horizontally and vertically.
+The image is reduced when necessary to leave room for typing. A wide window with
+roughly 40 or more text rows is recommended for the full dashboard. On short
+windows, the header is clipped with a message to enlarge the terminal.
 
 The animation stops on the first command, Ctrl-L, Ctrl-C, a new prompt, window resize, or long/multiline
 input that might scroll the header. It stays frozen for the rest of that shell

@@ -5,11 +5,11 @@ preparing the image frames and fetching system information, without waiting for
 the animation to finish.
 
 Fish draws a fixed header at the first prompt and serializes frame updates with
-its own input editing. A bounded Python timer updates a frame index and notifies
+its own input editing. A lifecycle-managed Python timer updates a frame index and notifies
 Fish; the timer never writes to the terminal. Fish saves/restores the visible
 cursor and never modifies the command buffer.
 
-The first command stops the timer and removes cached frames before command
+The default idle duration is unlimited (`--duration 0`). The first command stops the timer and removes cached frames before command
 output begins. Ctrl-L, Ctrl-C, another prompt, expiry, resize, and long/multiline input also stop updates.
 The final sprite stays as ordinary terminal content until cleared or scrolled
 away. There is no alternate screen, screen split, or scroll-region reservation.
@@ -17,6 +17,11 @@ away. There is no alternate screen, screen split, or scroll-region reservation.
 The helper uses Linux process start times to avoid notifying a reused shell PID.
 Fish exit stops the timer, and an orphaned timer cleans up when its shell exits.
 Frames are cached in a private temporary directory and removed on stop.
+
+The CachyOS dashboard is generated from Fastfetch JSON with an explicit local
+module whitelist. Network modules and the global Fastfetch config are excluded.
+Its ANSI-aware layout preserves colored meters and box borders when clipping.
+Dates and calendar use the desktop local clock at startup.
 
 The first-prompt clear replaces any old startup greeting image. No second image
 is printed after animation expiry. Recognized legacy startup calls are backed up
