@@ -1,4 +1,6 @@
 import json
+import re
+import pyte
 import os
 from pathlib import Path
 import shutil
@@ -78,6 +80,27 @@ class StartupTests(unittest.TestCase):
         self.assertIn('POKEMON_TERMINAL_SHOWN', hook.read_text())
         self.assertTrue(list((self.base / 'backups').glob(hook.name + '.*')))
 
+    def test_old_art_in_confd_and_greeting_is_disabled_and_restored(self):
+        greeting = self.config / 'fish/functions/fish_greeting.fish'
+        extra = self.config / 'fish/conf.d/old-pokemon.fish'
+        greeting.parent.mkdir(parents=True)
+        extra.parent.mkdir(parents=True)
+        originals = {
+            greeting: 'function fish_greeting\n    cat ~/.config/terminal-art/venusaur.txt\n    echo keep-my-greeting\nend\n',
+            extra: 'if status is-interactive\n    chafa ~/Pictures/venusaur.png\nend\n'
+        }
+        for path, text in originals.items():
+            path.write_text(text)
+        result = self.install(self.gif)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        for path in originals:
+            self.assertIn('# pokemon-terminal animated: disabled original:', path.read_text())
+        self.assertIn('echo keep-my-greeting', greeting.read_text())
+        result = self.install('--disable')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        for path, text in originals.items():
+            self.assertEqual(path.read_text(), text)
+
     def test_bad_gif_does_not_change_startup(self):
         (self.home / '.bashrc').write_text('# keep exactly\n')
         result = self.install(self.home / 'missing.gif')
@@ -86,14 +109,26 @@ class StartupTests(unittest.TestCase):
         self.assertFalse(self.base.exists())
 
     @unittest.skipUnless(shutil.which('fish'), 'requires Fish')
-    def test_fish_startup_returns_to_same_shell_with_still(self):
-        self.check_fish_startup(skip=False)
+    def test_live_prompt_typing_freeze_and_clear(self):
+        self.check_live_prompt(clear_key=False)
 
     @unittest.skipUnless(shutil.which('fish'), 'requires Fish')
-    def test_fish_ctrl_c_skips_to_prompt(self):
-        self.check_fish_startup(skip=True)
+    def test_ctrl_l_stops_animation(self):
+        self.check_live_prompt(clear_key=True)
 
-    def check_fish_startup(self, skip):
+    @unittest.skipUnless(shutil.which('fish'), 'requires Fish')
+    def test_timer_expires_without_blocking_prompt(self):
+        self.check_live_prompt(clear_key=False, expiry=True)
+
+    @unittest.skipUnless(shutil.which('fish'), 'requires Fish')
+    def test_resize_freezes_before_coordinates_change(self):
+        self.check_live_prompt(clear_key=False, resize=True)
+
+    @unittest.skipUnless(shutil.which('fish'), 'requires Fish')
+    def test_ctrl_c_freezes_and_cancels_input(self):
+        self.check_live_prompt(clear_key=False, cancel_key=True)
+
+    def check_live_prompt(self, clear_key, expiry=False, resize=False, cancel_key=False):
         import fcntl
         import pty
         import select
@@ -104,14 +139,22 @@ class StartupTests(unittest.TestCase):
 
         fish = shutil.which('fish')
         fetch = self.tools / 'fastfetch'
-        fetch.write_text('#!/bin/sh\nprintf "OS: StartupTest\\n"\n')
+        fetch.write_text('#!/bin/sh\nprintf "OS: LivePromptTest\\n"\n')
         fetch.chmod(0o755)
-        self.env.update(TERM='xterm-256color')
+        self.env.update(TERM='xterm-256color', COLUMNS='140', LINES='40')
         self.env.pop('POKEMON_TERMINAL_SHOWN', None)
         self.env.pop('SSH_CONNECTION', None)
-        result = self.install(self.gif, '--duration', '30' if skip else '.2')
+        result = self.install(self.gif, '--duration', '1.5' if expiry else '30')
         self.assertEqual(result.returncode, 0, result.stderr)
-        hook = 'bind \\r execute; bind \\n execute; source "$XDG_CONFIG_HOME/fish/conf.d/pokemon-terminal-animated.fish"'
+        hook = (
+            'bind \\r execute; bind \\n execute; '
+            'source "$XDG_CONFIG_HOME/fish/conf.d/pokemon-terminal-animated.fish"; '
+            'printf "OLD_GREETING_ART\\n"; '
+            'function _test_record --on-signal USR2; '
+            'commandline > "$HOME/buffer"; '
+            'printf "%s" "$_pokemon_active" > "$HOME/active"; '
+            'printf "%s" "$_pokemon_cache" > "$HOME/cache"; end'
+        )
         master, slave = pty.openpty()
         fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack('HHHH', 40, 140, 0, 0))
 
@@ -119,38 +162,94 @@ class StartupTests(unittest.TestCase):
             os.setsid()
             fcntl.ioctl(0, termios.TIOCSCTTY, 0)
 
+        started = time.monotonic()
         process = subprocess.Popen(
             [fish, '--no-config', '--init-command', hook, '-i'],
             stdin=slave, stdout=slave, stderr=slave, env=self.env,
             preexec_fn=controlling_terminal)
         os.close(slave)
         output = bytearray()
+        def consume(chunk):
+            output.extend(chunk)
+
+        def visible():
+            # pyte predates Kitty keyboard negotiation. Those CSI-u sequences
+            # must not be mistaken for its older cursor-restore command.
+            screen = pyte.Screen(140, 40)
+            stream = pyte.Stream(screen)
+            text = output.decode('utf-8', errors='replace')
+            text = re.sub(r'\x1b\[[=>?][0-9;:]*u', '', text)
+            stream.feed(text)
+            return screen
 
         def read_until(predicate):
-            deadline = time.monotonic() + 6
+            deadline = time.monotonic() + 7
             while time.monotonic() < deadline:
-                if select.select([master], [], [], .1)[0]:
+                if select.select([master], [], [], .05)[0]:
                     try:
-                        output.extend(os.read(master, 65536))
+                        consume(os.read(master, 65536))
                     except OSError:
                         break
                 if predicate(bytes(output)):
                     return
-            self.fail('Terminal did not reach expected state: ' + repr(bytes(output[-1000:])))
+            self.fail('Terminal did not reach expected state: ' + repr(bytes(output[-1500:])))
 
         try:
-            if skip:
-                read_until(lambda data: b'OS: StartupTest' in data)
+            read_until(lambda data: b'OS: LivePromptTest' in data and b'> ' in data)
+            self.assertLess(time.monotonic() - started, 5)
+            # The greeting is gone from the visible display before the prompt.
+            self.assertNotIn(b'OLD_GREETING_ART', output.split(b'\x1b[2J')[-1])
+            self.assertNotIn(b'\x1b[?1049h', output)
+            read_until(lambda data: data.count(b'\x1b8') >= 2)
+            os.write(master, b'echo USER_TYPED_OK')
+            saves = output.count(b'\x1b8')
+            read_until(lambda data: data.count(b'\x1b8') >= saves + 2)
+            screen = visible()
+            self.assertTrue(any('echo USER_TYPED_OK' in line for line in screen.display))
+            cursor_before = (screen.cursor.x, screen.cursor.y)
+            restores = output.count(b'\x1b8')
+            read_until(lambda data: data.count(b'\x1b8') >= restores + 2)
+            screen = visible()
+            self.assertEqual((screen.cursor.x, screen.cursor.y), cursor_before)
+            self.assertTrue(any('echo USER_TYPED_OK' in line for line in screen.display))
+            os.kill(process.pid, signal.SIGUSR2)
+            read_until(lambda data: (self.home / 'buffer').exists())
+            self.assertEqual((self.home / 'buffer').read_text().strip(), 'echo USER_TYPED_OK')
+            if resize:
+                fcntl.ioctl(master, termios.TIOCSWINSZ, struct.pack('HHHH', 42, 145, 0, 0))
+                os.kill(process.pid, signal.SIGWINCH)
+            if expiry or resize:
+                def inactive(data):
+                    os.kill(process.pid, signal.SIGUSR2)
+                    active = self.home / 'active'
+                    return active.exists() and active.read_text() == '0'
+                read_until(inactive)
+                cache = Path((self.home / 'cache').read_text())
+                self.assertFalse(cache.exists())
+            if cancel_key:
                 os.write(master, b'\x03')
-            read_until(lambda data: b'OS: StartupTest' in data.split(b'\x1b[?1049l')[-1]
-                       and b'\x1b[?1049l' in data)
-            os.write(master, b'echo SHELL_READY\r')
-            read_until(lambda data: b'\rSHELL_READY\r\n' in data)
-            # Nested shells inherit the marker and skip another 30-second splash.
-            os.write(master, b'fish --no-config --init-command \'source "$XDG_CONFIG_HOME/fish/conf.d/pokemon-terminal-animated.fish"\' -c \'echo NESTED_READY\'\r')
-            read_until(lambda data: b'\rNESTED_READY\r\n' in data)
-            self.assertEqual(bytes(output).count(b'\x1b[?1049h'), 1)
-            self.assertIn(b'\x1b[?25h', output)
+                def cancelled(data):
+                    os.kill(process.pid, signal.SIGUSR2)
+                    active = self.home / 'active'
+                    buffer = self.home / 'buffer'
+                    return active.exists() and active.read_text() == '0' and not buffer.read_text().strip()
+                read_until(cancelled)
+                os.write(master, b'echo USER_TYPED_OK')
+            if clear_key:
+                os.write(master, b'\x0c')
+                read_until(lambda data: data.count(b'\x1b[2J') >= 2 or b'\x1b[J' in data)
+            os.write(master, b'\r')
+            read_until(lambda data: b'\rUSER_TYPED_OK\r\n' in data)
+            # Once a command executes, no more frame updates are allowed.
+            frozen = output.count(b'\x1b7')
+            deadline = time.monotonic() + .5
+            while time.monotonic() < deadline:
+                if select.select([master], [], [], .05)[0]:
+                    consume(os.read(master, 65536))
+            self.assertEqual(output.count(b'\x1b7'), frozen)
+            self.assertNotIn(b'OLD_GREETING_ART', output.split(b'\x1b[2J')[-1])
+            os.write(master, b'clear\r')
+            read_until(lambda data: data.count(b'\x1b[H') >= 2)
             os.write(master, b'exit\r')
             process.wait(timeout=5)
             self.assertEqual(process.returncode, 0)

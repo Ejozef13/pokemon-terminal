@@ -42,7 +42,9 @@ def migrate(text, disable=False):
         elif line.startswith(TAG) or line.lstrip().startswith('#'):
             result.append(line)
         elif ('bashrc-pokemon.sh' in line or
-              re.match(r'^\s*(?:command\s+)?(?:fastfetch|neofetch)(?:\s|$)', line)):
+              re.match(r'^\s*(?:command\s+)?(?:fastfetch|neofetch|venusaur|pokemon-terminal|pokemon_terminal)(?:\s|$)', line) or
+              (re.match(r'^\s*(?:command\s+)?(?:cat|chafa|viu|jp2a|source|\.)(?:\s|$)', line)
+               and re.search(r'venusaur|pokemon-terminal|terminal-art', line, re.I))):
             # Keep an if/function body syntactically valid when its only
             # command was the old startup invocation.
             if line.rstrip().endswith('\\'):
@@ -100,8 +102,18 @@ def main():
         except (ImportError, OSError, ValueError) as error:
             parser.error(f'Cannot read GIF: {error}. Use the virtualenv with Pillow installed.')
     originals = [(bashrc, bashrc.read_text() if bashrc.exists() else '')]
-    if fish_config.exists():
-        originals.append((fish_config, fish_config.read_text()))
+    fish_files = {fish_config}
+    fish_files.update((config_home / 'fish/conf.d').glob('*.fish'))
+    fish_files.update((config_home / 'fish/functions').glob('*pokemon*.fish'))
+    fish_files.update((config_home / 'fish/functions').glob('*venusaur*.fish'))
+    fish_files.add(config_home / 'fish/functions/fish_greeting.fish')
+    for path in sorted(fish_files):
+        if path == fish_hook or not path.is_file():
+            continue
+        if path.is_symlink():
+            print(f'Skipping linked config: {path}; inspect its old art call manually.')
+            continue
+        originals.append((path, path.read_text()))
     for path, text in originals:
         migrate(text, args.disable)  # Preflight malformed blocks.
     base.mkdir(parents=True, exist_ok=True)
@@ -115,6 +127,8 @@ def main():
         return
     shutil.copy2(ROOT / 'animated/venusaur.py', base / 'venusaur.py')
     shutil.copy2(ROOT / 'animated/startup.py', base / 'startup.py')
+    shutil.copy2(ROOT / 'animated/prompt.py', base / 'prompt.py')
+    shutil.copy2(ROOT / 'animated/fish-prompt.fish', base / 'fish-prompt.fish')
     destination = base / 'venusaur.gif'
     if args.gif.resolve() != destination.resolve():
         shutil.copy2(args.gif, destination)
@@ -150,12 +164,12 @@ if status is-interactive; and not set -q POKEMON_TERMINAL_SHOWN; and not set -q 
         if set -q XDG_CONFIG_HOME
             set pokemon_config "$XDG_CONFIG_HOME"
         end
-        set -l pokemon_dir "$pokemon_config/pokemon-terminal/animated"
-        if test -f "$pokemon_dir/enabled"
-            set -l pokemon_python (python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["python"])' "$pokemon_dir/config.json")
-            if test -x "$pokemon_python"
+        set -g _pokemon_base "$pokemon_config/pokemon-terminal/animated"
+        if test -f "$_pokemon_base/enabled"
+            set -g _pokemon_python (python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["python"])' "$_pokemon_base/config.json")
+            if test -x "$_pokemon_python"
                 set -gx POKEMON_TERMINAL_SHOWN 1
-                "$pokemon_python" "$pokemon_dir/startup.py"
+                source "$_pokemon_base/fish-prompt.fish"
             end
         end
     end
@@ -163,11 +177,12 @@ end
 """
     write_config(fish_hook, fish, backups)
     (base / 'enabled').touch()
-    print(f'Enabled {args.duration:g}-second animated startup for Fish and Bash.')
-    print('Open a NEW terminal. Ctrl-C skips to the still frame and normal prompt.')
+    print(f'Fish: prompt available during animation (up to {args.duration:g}s); first command freezes it.')
+    print('Bash: timed foreground playback remains available; idle-prompt animation requires Fish.')
+    print('Open a NEW terminal. Use clear or Ctrl-L for a clean workspace.')
     print('Original files retained; matching startup lines backed up and disabled.')
-    print('If your old art comes from another Fish conf.d file or a custom function,')
-    print('disable that separate invocation manually; this installer does not edit unknown files.')
+    print('Recognized old art calls in Fish config, conf.d, and greeting files are disabled.')
+    print('First-prompt drawing clears remaining startup artwork without deleting its files.')
     print('Rollback: python3 animated/install.py --disable')
 
 

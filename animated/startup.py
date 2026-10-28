@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Play a bounded startup animation, leave its last frame, and return to the shell."""
+"""Foreground Bash fallback; Fish uses fish-prompt.fish for a live prompt."""
 import json
 import os
 from pathlib import Path
