@@ -1,6 +1,8 @@
-# Animated Venusaur experiment
+# Animated Venusaur player
 
-This is separate from the original static startup. It does not install anything,
+For automatic Fish/Bash startup, use [the startup installer](../README.md).
+
+The foreground player below is also available separately. It does not install anything,
 change ~/.bashrc, or start a background process. Run it on demand and press Ctrl-C
 to return to the shell. It uses the alternate screen and restores cursor visibility
 on exit. Fastfetch is captured once at launch; neofetch is the fallback.
@@ -51,3 +53,10 @@ For a short startup-style preview without changing your existing startup:
 ```bash
 python3 animated/venusaur.py --duration 3
 ```
+
+## Display alignment
+
+System information is vertically centered alongside the sprite, and the combined
+block is centered within the pane. Use `--gap 8` to change the separation. Extra
+vertical pane space is balanced above and below the block. Use `--quiet` to hide
+the exit hint. Animation uses the alternate screen; Ctrl-C restores the terminal.

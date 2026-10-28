@@ -1,4 +1,70 @@
-# Pokemon Terminal
+# Pokemon Terminal — animated startup
+
+Animated Venusaur and vertically centered fastfetch in a display pane above your
+shell, automatically on every new Fish or Bash terminal. The combined display
+is centered horizontally too. Original static files remain available for rollback.
+
+## Enable on your desktop
+
+From your existing checkout:
+
+```fish
+git pull --ff-only origin main
+.venv/bin/python -m pip install -r requirements-image.txt
+.venv/bin/python animated/install.py /home/ejmr/Downloads/pokemon-venusaur.gif
+```
+
+This uses your existing virtualenv and tmux. For a fresh installation, first run
+`python3 -m venv .venv` and install tmux through your package manager.
+Open a **new terminal outside the existing tmux session** to test.
+
+The installer copies your GIF to your XDG configuration directory, installs
+Fish and Bash hooks, and backs up/disables recognized original startup lines.
+It leaves the original art, scripts, and unrelated settings intact. If a custom
+Fish function or another conf.d file draws the old art, disable that invocation
+separately; unknown configuration files are not rewritten.
+
+Each terminal gets its own tmux session. Your shell is focused in the lower
+pane. The animation occupies the upper pane and never draws over typing.
+Nested shells inside tmux and SSH sessions do not create another session.
+Exiting the lower shell closes that terminal's private tmux session and returns
+to the original shell. Stopping the animation only closes its display pane. Other terminals are unaffected. Very small windows
+keep a regular shell.
+
+## Tune the layout
+
+Re-run the installer to update settings:
+
+```fish
+.venv/bin/python animated/install.py /home/ejmr/Downloads/pokemon-venusaur.gif --width 48 --gap 8 --height 55 --fps 8
+```
+
+- `--width`: sprite columns (default 48).
+- `--gap`: columns between sprite and fastfetch (default 8).
+- `--height`: percentage of terminal height given to the display (default 55).
+- `--fps`: maximum redraw rate (default 8).
+
+Fastfetch information is captured once when the terminal opens. Neofetch is the
+fallback. Install fastfetch separately for your preferred system information.
+Keep the checkout's virtualenv: the installed launcher uses that Python.
+
+## Roll back without deleting anything
+
+```fish
+.venv/bin/python animated/install.py --disable
+```
+
+Open a new terminal. Recognized original startup lines are restored; backups
+remain in `~/.config/pokemon-terminal/animated/backups` (or XDG_CONFIG_HOME).
+Manual customizations outside the installer's recognized lines stay under
+your control.
+
+The desktop GIF is user supplied and is not bundled in this repository.
+See [animated/README.md](animated/README.md) for on-demand GIF and ASCII playback.
+
+---
+
+## Original static terminal (preserved)
 
 Venusaur art at Bash startup, with optional system information alongside it.
 Requires Linux, Bash 4+, Python 3, and a UTF-8 terminal. Color images use
@@ -48,21 +114,6 @@ below the art. The original bundled art is about 99 columns wide, so choose a
 smaller custom image for narrow windows. Noninteractive and TERM=dumb shells
 produce no output. Startup uses Bash arrays, with no temporary files or background
 processes. Standard terminal cells are assumed to be roughly twice as tall as wide.
-
-## Animated idle Venusaur
-
-Animation is feasible, but an idle loop sharing the shell's drawing area can
-overwrite typing, command output, or scrollback. A reliable approach is a small
-dedicated tmux pane running a foreground sprite player at about 6–10 frames/sec.
-It can cache GIF/sprite-sheet frames as ANSI art and redraw only its own pane,
-restoring the cursor and terminal state on exit. A brief animation before the
-prompt is another simpler option.
-
-Colored half-block pixel art already works for sprites; pure ASCII is optional.
-A transparent animated GIF or a sprite sheet with frame dimensions/timing is the
-best input. A still image can support an artificial bobbing effect, but cannot
-recreate the actual idle poses. Animation is a future feature, not implemented
-by this static startup installer.
 
 ## Validate
 

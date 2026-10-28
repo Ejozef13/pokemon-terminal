@@ -36,9 +36,9 @@ class AnimationTests(unittest.TestCase):
 
     def test_layout(self):
         rows = animation.layout(['AB', 'CD'], ['OS: Debian'], 80, 24, 0)
-        self.assertEqual(rows[0], 'AB  OS: Debian')
+        self.assertTrue(any('AB      OS: Debian' in row for row in rows))
         stacked = animation.layout(['AB'], ['OS: Debian'], 20, 24, 0)
-        self.assertEqual(stacked, ['AB', '', 'OS: Debian'])
+        self.assertEqual([r for r in stacked if r], ['AB', 'OS: Debian'])
 
     def test_real_terminal_playback_and_cleanup(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -65,3 +65,9 @@ class AnimationTests(unittest.TestCase):
             self.assertIn(b'\x1b[?1049h', output)
             self.assertGreaterEqual(output.count(b'\x1b[H\x1b[2J'), 2)
             self.assertTrue(output.endswith(b'\x1b[0m\x1b[?25h\x1b[?1049l'))
+
+    def test_information_is_centered_vertically(self):
+        rows = animation.layout(['AB'] * 10, ['OS: Debian', 'Kernel: Linux'], 100, 12, 0)
+        self.assertNotIn('OS:', rows[0])
+        self.assertIn('OS: Debian', rows[4])
+        self.assertIn('Kernel: Linux', rows[5])

@@ -2,6 +2,7 @@
 _pokemon_terminal() {
     [[ $- == *i* && ${TERM:-dumb} != dumb ]] || return 0
     local art="${XDG_CONFIG_HOME:-$HOME/.config}/pokemon-terminal/terminal-art/venusaur.txt"
+    [[ ! -f ${XDG_CONFIG_HOME:-$HOME/.config}/pokemon-terminal/animated/enabled ]] || return 0
     [[ -r $art ]] || return 0
     local -a left=() right=()
     local line plain info='' width=0 columns=${COLUMNS:-80} i count
