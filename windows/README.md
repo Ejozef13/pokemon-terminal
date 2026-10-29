@@ -1,4 +1,6 @@
-# Windows PowerShell port (experimental)
+# For Windows — PowerShell 5.1
+
+[Back to platform selection](../README.md) · [For Linux](../docs/LINUX.md)
 
 Separate Windows integration for **Windows PowerShell 5.1 in Windows Terminal**.
 Linux Fish sources, installation and dependencies are unchanged. Windows uses a
@@ -25,14 +27,15 @@ before drawing; after handoff it never draws again.
 ## Install
 
 Install Python 3.10+ (with pip/venv) and Windows Terminal, then open a **Windows
-PowerShell** tab. Clone this repo and run from its root:
+PowerShell** tab, then clone and install:
 
 ```powershell
+git clone https://github.com/Ejozef13/pokemon-terminal.git
+cd pokemon-terminal
 .\windows\Install.ps1 -Gif "$HOME\Downloads\Venusaur.gif"
 ```
 
-The original GIF is not currently bundled: the chat previews did not expose its
-bytes. Supply your original **15-frame GIF**; the installer decodes every frame
+The original GIF is not bundled. Copy it onto the new PC and supply your original **15-frame GIF**; the installer decodes every frame
 and rejects a different frame count by default. Frame count cannot establish
 artwork identity, so do not substitute a different image expecting the same art.
 For your own Pokemon GIF (2-300 frames):
@@ -99,7 +102,9 @@ Clearing removes the header; it does not restart it until a new tab.
 
 ## Testing and troubleshooting
 
-**No live Windows test has been performed in the Linux development environment.**
+**The owner has reported startup/layout working on Windows PowerShell 5.1.**
+The developer environment is Linux; the complete live Windows checklist below
+has not been verified.
 Do not treat Linux fixtures or parsing checks as proof of Windows compatibility.
 Development checks passed with 34 Python tests (including the Linux Fish PTY
 regressions and synthetic 15-frame Windows preparation), plus PowerShell 7.4.6

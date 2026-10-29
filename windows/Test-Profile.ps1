@@ -43,6 +43,10 @@ try {
     if ((Remove-PokemonRetiredProfile $modified) -cne $modified) { throw 'Modified legacy code was removed.' }
     $unrelated = 'Invoke-WebRequest https://example.com; $venusaur = "my artwork"'
     if ((Remove-PokemonRetiredProfile $unrelated) -cne $unrelated) { throw 'Unrelated request removed.' }
+    $laptopVariant = $legacy.Replace('Count / 2', 'Count / 3').Replace('"OS : $os"', '"OS  : $os"')
+    if ((Remove-PokemonRetiredProfile $laptopVariant).Contains('Invoke-WebRequest')) {
+        throw 'Screenshot legacy variant with one-third offset was not removed.'
+    }
     [IO.File]::WriteAllText($profileFile, "# >>> pokemon-terminal windows >>>`n")
     $rejected = $false
     try { Update-PokemonProfile -ProfilePath $profileFile -Block $block } catch { $rejected = $true }

@@ -1,5 +1,8 @@
 # Development
 
+Platform setup: [For Linux](LINUX.md) · [For Windows](../windows/README.md).
+The root README provides separate first-install, update and removal commands.
+
 ## Tests
 
 ```bash

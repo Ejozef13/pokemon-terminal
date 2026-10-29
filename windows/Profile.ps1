@@ -36,7 +36,15 @@ function Get-PokemonTokenSignature([string]$Text) {
     [void][Management.Automation.Language.Parser]::ParseInput($Text, [ref]$tokens, [ref]$errors)
     if ($errors.Count) { return $null }
     return (($tokens | Where-Object { $_.Kind -notin @('NewLine', 'Comment', 'EndOfInput') } |
-        ForEach-Object { $_.Kind.ToString() + ':' + $_.Text }) -join "`n")
+        ForEach-Object {
+            $value = $_.Text
+            # The retired label strings appeared with different colon padding.
+            # Normalize only these four exact labels/variables, not arbitrary strings.
+            if ($value -cmatch '^"(OS|CPU|GPU|RAM)\s*:\s*(\$(?:os|cpu|gpu|ram)(?: GB)?)"$') {
+                $value = '"' + $Matches[1] + ' : ' + $Matches[2] + '"'
+            }
+            $_.Kind.ToString() + ':' + $value
+        }) -join "`n")
 }
 function Remove-PokemonRetiredProfile([string]$Text) {
     $tokens = $null; $errors = $null
@@ -46,14 +54,17 @@ function Remove-PokemonRetiredProfile([string]$Text) {
     $referenceTokens = $null; $referenceErrors = $null
     $reference = [Management.Automation.Language.Parser]::ParseInput($script:PokemonRetiredProfile, [ref]$referenceTokens, [ref]$referenceErrors)
     $count = $reference.EndBlock.Statements.Count
-    $signature = Get-PokemonTokenSignature $script:PokemonRetiredProfile
+    $signatures = @(
+        (Get-PokemonTokenSignature $script:PokemonRetiredProfile),
+        (Get-PokemonTokenSignature ($script:PokemonRetiredProfile.Replace('Count / 2', 'Count / 3')))
+    )
     $original = $Text
     $lastRemoved = $Text.Length
     for ($i = $statements.Count - $count; $i -ge 0; $i--) {
         $start = $statements[$i].Extent.StartOffset
         $length = $statements[$i + $count - 1].Extent.EndOffset - $start
         if ($start + $length -le $lastRemoved -and
-            (Get-PokemonTokenSignature $original.Substring($start, $length)) -ceq $signature) {
+            $signatures -ccontains (Get-PokemonTokenSignature $original.Substring($start, $length))) {
             $Text = $Text.Remove($start, $length)
             $lastRemoved = $start
         }
