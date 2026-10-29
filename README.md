@@ -12,6 +12,10 @@ Your prompt works while Venusaur idles. The first command freezes the animation;
 
 ## Install
 
+For the separate experimental **Windows PowerShell 5.1 / Windows Terminal** port,
+see [Windows installation, limitations, testing and uninstall](windows/README.md).
+The Linux Fish instructions below are unchanged.
+
 Requires Linux, Fish (tested with 4.x), Python 3.10+ with venv/pip, and a UTF-8 true-color terminal.
 Fastfetch and PCI tools improve hardware detection.
 
