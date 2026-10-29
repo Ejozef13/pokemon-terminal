@@ -29,6 +29,9 @@ namespace PokemonTerminal {
 '@
     }
     if (-not [PokemonTerminal.Native]::EnableVT()) { return }
+    # PS 5.1 commonly starts with an OEM code page that replaces Unicode glyphs
+    # with '?'. Set the console writer to UTF-8 before emitting shared art/text.
+    [Console]::OutputEncoding = New-Object Text.UTF8Encoding($false)
     $global:PokemonWindowsLoaded = $true
     $global:PokemonWindowsRoot = $PSScriptRoot
     $global:PokemonWindowsReadLine = (Get-Item Function:\PSConsoleHostReadLine).ScriptBlock

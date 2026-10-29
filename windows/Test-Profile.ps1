@@ -30,6 +30,19 @@ try {
     $removed = [IO.File]::ReadAllText($profileFile)
     if ($removed.Contains('Startup.ps1') -or -not $removed.Contains('custom> ')) { throw 'Uninstall damaged profile.' }
     Update-PokemonProfile -ProfilePath $profileFile -Block ''
+    $legacy = $script:PokemonRetiredProfile.Replace("`n", "`r`n")
+    $custom = "function prompt { 'custom> ' }`r`n"
+    [IO.File]::WriteAllText($profileFile, $custom + $legacy + "`r`n" + $block)
+    Update-PokemonProfile -ProfilePath $profileFile -Block $block
+    $migrated = [IO.File]::ReadAllText($profileFile)
+    if ($migrated.Contains('Invoke-WebRequest') -or $migrated.Contains('Could not load Venusaur') -or
+        -not $migrated.Contains($custom) -or -not $migrated.Contains($block)) { throw 'Recognized legacy migration failed.' }
+    Update-PokemonProfile -ProfilePath $profileFile -Block $block
+    if ([IO.File]::ReadAllText($profileFile) -cne $migrated) { throw 'Legacy migration not idempotent.' }
+    $modified = $legacy.Replace('"System Info"', '"My custom stats"')
+    if ((Remove-PokemonRetiredProfile $modified) -cne $modified) { throw 'Modified legacy code was removed.' }
+    $unrelated = 'Invoke-WebRequest https://example.com; $venusaur = "my artwork"'
+    if ((Remove-PokemonRetiredProfile $unrelated) -cne $unrelated) { throw 'Unrelated request removed.' }
     [IO.File]::WriteAllText($profileFile, "# >>> pokemon-terminal windows >>>`n")
     $rejected = $false
     try { Update-PokemonProfile -ProfilePath $profileFile -Block $block } catch { $rejected = $true }

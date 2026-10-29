@@ -57,7 +57,12 @@ this project does not bypass it or change it automatically.
 
 The installer modifies only `$PROFILE.CurrentUserCurrentHost` and backs up its
 original bytes before changes. It replaces its own exact managed marker block,
-preserving unrelated text. It does not guess which unmarked script is broken.
+preserving unrelated text. It also recognizes the complete retired static
+Venusaur/System Info launcher that fetched `terminal-art/venusaur.txt` from this
+repository. That exact block is removed automatically, including its startup
+network request; changed or unrelated blocks are preserved. Matching parses
+tokens without executing the old code and tolerates indentation/comments.
+For other unmarked scripts, it does not guess which code is broken.
 Inspect `$PROFILE` and explicitly identify any old broken startup call:
 
 ```powershell
@@ -88,6 +93,8 @@ Set-PSReadLineKeyHandler -Chord Ctrl+l -Function ClearScreen
 ```
 
 No existing key bindings, aliases or execution policy are overwritten.
+The Windows Terminal console output encoding is set to UTF-8 so PowerShell 5.1
+does not replace the dashboard's arrows, icons and palette dots with `?`.
 Clearing removes the header; it does not restart it until a new tab.
 
 ## Testing and troubleshooting
